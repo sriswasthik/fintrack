@@ -159,6 +159,14 @@ model Transaction {
   linkedRefund   Transaction? @relation("PurchaseRefund", fields: [linkedRefundId], references: [id], onDelete: SetNull)
   refundFor      Transaction? @relation("PurchaseRefund")
 
+  /// Set on the *outgoing* leg of a transfer between two of the user's own
+  /// accounts, pointing at the incoming leg (§8 case 1). From the incoming row,
+  /// the reverse side of the relation is `transferPairOf`. Both legs are
+  /// categorized TRANSFER and excluded from spend and income totals (§5).
+  transferPairId String?      @unique
+  transferPair   Transaction? @relation("TransferPair", fields: [transferPairId], references: [id], onDelete: SetNull)
+  transferPairOf Transaction? @relation("TransferPair")
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
