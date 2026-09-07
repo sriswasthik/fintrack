@@ -1,0 +1,10 @@
+node_modules
+dist
+build
+coverage
+package-lock.json
+.gitkeep
+
+# Owner-authored source-of-truth docs — keep them byte-identical.
+PROJECT_CONTEXT.md
+IMPLEMENTATION_PLAN.md

@@ -1,0 +1,60 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  client:
+    name: client (lint / typecheck / test)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+
+      # The lockfile lives at the workspace root, so install the whole monorepo
+      # and then run only this workspace's scripts.
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint --workspace client
+
+      - name: Typecheck
+        run: npm run typecheck --workspace client
+
+      - name: Test
+        run: npm run test --workspace client
+
+  server:
+    name: server (lint / typecheck / test)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint --workspace server
+
+      - name: Typecheck
+        run: npm run typecheck --workspace server
+
+      - name: Test
+        run: npm run test --workspace server
