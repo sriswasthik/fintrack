@@ -1,0 +1,27 @@
+# dependencies
+node_modules/
+
+# build output
+dist/
+build/
+*.tsbuildinfo
+
+# test / tooling output
+coverage/
+.vite/
+.eslintcache
+
+# environment — only the .example files are committed
+.env
+.env.*
+!.env.example
+
+# editors & OS
+.DS_Store
+.idea/
+.vscode/*
+!.vscode/extensions.json
+
+# logs
+*.log
+npm-debug.log*
