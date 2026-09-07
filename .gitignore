@@ -6,6 +6,9 @@ dist/
 build/
 *.tsbuildinfo
 
+# Prisma Client is generated from schema.prisma by `prisma generate`
+server/src/generated/
+
 # test / tooling output
 coverage/
 .vite/
