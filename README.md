@@ -5,8 +5,9 @@ Express REST API. See [PROJECT_CONTEXT.md](./PROJECT_CONTEXT.md) for the archite
 and data model, and [IMPLEMENTATION_PLAN.md](./IMPLEMENTATION_PLAN.md) for the phased
 build plan.
 
-> **Status:** Phase 0 — scaffolding only. There is no database schema, business logic
-> or auth yet; the client renders a placeholder page that calls `GET /api/health`.
+> **Status:** Phase 1 — data model and synthetic data. The Prisma schema and a
+> seeded demo dataset exist; there is no import pipeline, categorization or auth
+> yet. The client still renders a placeholder page that calls `GET /api/health`.
 
 ## Layout
 
@@ -28,11 +29,23 @@ Requires Node.js 20.19+ (22 recommended) and npm 10+.
 npm install                       # installs both workspaces from the root lockfile
 cp server/.env.example server/.env
 cp client/.env.example client/.env
-npm run dev                       # runs the API and the Vite dev server together
+```
+
+You need a PostgreSQL 14+ database. Point `DATABASE_URL` in `server/.env` at it,
+then set up the schema and load the demo data:
+
+```bash
+npm run db:generate --workspace server   # generate Prisma Client from the schema
+npm run db:migrate  --workspace server   # npx prisma migrate dev
+npm run db:seed     --workspace server   # npx prisma db seed
+npm run dev                              # API + Vite dev server together
 ```
 
 Then open <http://localhost:5173> — the placeholder page calls the API and shows
 the health-check result.
+
+Prisma Client is generated code and is not committed, so `db:generate` has to run
+after a fresh clone and after any schema change. It does not need a database.
 
 ## Scripts
 
