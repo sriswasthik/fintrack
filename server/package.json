@@ -14,7 +14,8 @@
     "db:migrate": "prisma migrate dev",
     "db:seed": "prisma db seed",
     "db:generate": "prisma generate",
-    "test-data:export": "tsx scripts/export-test-data.ts"
+    "test-data:export": "tsx scripts/export-test-data.ts",
+    "rules:apply": "tsx scripts/apply-rules.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.124.0",
