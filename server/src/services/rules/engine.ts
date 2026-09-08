@@ -44,6 +44,7 @@ export interface EngineTransaction {
   /** Debit-positive: purchases positive, refunds and income negative. */
   amount: number;
   category: Category;
+  confidence: number;
   source: TransactionSource;
 }
 
@@ -137,6 +138,18 @@ export function categorizeTransaction(
 
   const rule = matchRule(transaction.normalizedMerchant, orderedRules);
   if (!rule) {
+    // An answer the LLM fallback already supplied is kept. Re-running the
+    // deterministic pass — which happens after every import — must not undo
+    // Phase 4's work and send the whole review queue back to square one.
+    if (transaction.source === 'LLM' && transaction.category !== 'UNCATEGORIZED') {
+      return {
+        transactionId: transaction.id,
+        category: transaction.category,
+        confidence: transaction.confidence,
+        source: 'LLM',
+        reason: 'No rule matched; keeping the existing AI categorization',
+      };
+    }
     return {
       transactionId: transaction.id,
       category: 'UNCATEGORIZED',
