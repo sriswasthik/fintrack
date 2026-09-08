@@ -35,6 +35,7 @@ function txn(overrides: Partial<EngineTransaction> & { id: string }): EngineTran
     normalizedMerchant: 'WHOLE FOODS',
     amount: 64.18,
     category: 'UNCATEGORIZED',
+    confidence: 0,
     source: 'RULE',
     ...overrides,
   };
@@ -356,6 +357,69 @@ describe('runEngine', () => {
     expect(results.find((r) => r.transactionId === 'm')).toMatchObject({
       category: 'BUSINESS',
       source: 'MANUAL',
+    });
+  });
+
+  it('keeps an existing AI categorization when no rule matches', () => {
+    // The deterministic pass runs after every import. If a non-match reset an
+    // LLM answer to UNCATEGORIZED, one import would undo the whole Phase 4 pass
+    // and send every reviewed merchant back to the queue.
+    const transactions = [
+      txn({
+        id: 'llm',
+        normalizedMerchant: 'BLUEBIRD BAKERY',
+        category: 'DINING',
+        confidence: 0.55,
+        source: 'LLM',
+      }),
+    ];
+
+    const [result] = runEngine(transactions, rules).results;
+
+    expect(result).toMatchObject({ category: 'DINING', confidence: 0.55, source: 'LLM' });
+  });
+
+  it('lets a newly learned rule take over from an AI answer', () => {
+    const learned = orderRules([
+      ...rules,
+      rule({
+        pattern: '^BLUEBIRD BAKERY$',
+        category: 'GROCERIES',
+        userId: 'user_1',
+        learnedFromOverride: true,
+      }),
+    ]);
+    const transactions = [
+      txn({
+        id: 'llm',
+        normalizedMerchant: 'BLUEBIRD BAKERY',
+        category: 'DINING',
+        confidence: 0.55,
+        source: 'LLM',
+      }),
+    ];
+
+    expect(runEngine(transactions, learned).results[0]).toMatchObject({
+      category: 'GROCERIES',
+      confidence: 1,
+      source: 'RULE',
+    });
+  });
+
+  it('still resets a rule-sourced row that no longer matches anything', () => {
+    const transactions = [
+      txn({
+        id: 'stale',
+        normalizedMerchant: 'GONE',
+        category: 'DINING',
+        confidence: 1,
+        source: 'RULE',
+      }),
+    ];
+
+    expect(runEngine(transactions, rules).results[0]).toMatchObject({
+      category: 'UNCATEGORIZED',
+      confidence: 0,
     });
   });
 

@@ -15,7 +15,9 @@
     "db:seed": "prisma db seed",
     "db:generate": "prisma generate",
     "test-data:export": "tsx scripts/export-test-data.ts",
-    "rules:apply": "tsx scripts/apply-rules.ts"
+    "rules:apply": "tsx scripts/apply-rules.ts",
+    "eval:categorize": "tsx scripts/eval-categorize.ts",
+    "llm:apply": "tsx scripts/apply-llm.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.124.0",

@@ -202,3 +202,42 @@ export async function splitTransaction(input: {
 export async function clearSplit(transactionId: string): Promise<void> {
   await api.delete(`/api/transactions/${transactionId}/split`);
 }
+
+export interface ReviewQueue {
+  total: number;
+  limit: number;
+  offset: number;
+  counts: { uncategorized: number; lowConfidence: number };
+  lowConfidenceThreshold: number;
+  transactions: Transaction[];
+}
+
+export interface OverrideResult {
+  transaction: Transaction;
+  learnedRule: { id: string; pattern: string; category: Category } | null;
+}
+
+export async function fetchReviewQueue(params: {
+  accountId?: string;
+  limit?: number;
+  offset?: number;
+}): Promise<ReviewQueue> {
+  const { data } = await api.get<ReviewQueue>('/api/review-queue', { params });
+  return data;
+}
+
+/**
+ * Records a human's category decision. `learn` (on by default) also teaches a
+ * rule for the merchant, so future imports never reach the LLM for it.
+ */
+export async function overrideCategory(input: {
+  transactionId: string;
+  category: Category;
+  learn?: boolean;
+}): Promise<OverrideResult> {
+  const { data } = await api.post<OverrideResult>(
+    `/api/transactions/${input.transactionId}/category`,
+    { category: input.category, learn: input.learn ?? true },
+  );
+  return data;
+}

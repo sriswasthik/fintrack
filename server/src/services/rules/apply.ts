@@ -92,6 +92,7 @@ export async function applyRuleEngine(
         normalizedMerchant: true,
         amount: true,
         category: true,
+        confidence: true,
         source: true,
       },
     }),
@@ -105,6 +106,7 @@ export async function applyRuleEngine(
     normalizedMerchant: t.normalizedMerchant,
     amount: Number(t.amount),
     category: t.category,
+    confidence: t.confidence,
     source: t.source,
   }));
 

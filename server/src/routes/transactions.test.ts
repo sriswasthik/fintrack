@@ -16,8 +16,12 @@ const db = vi.hoisted(() => ({
   transactionUpdateMany: vi.fn(),
   transactionCount: vi.fn(),
   ruleFindMany: vi.fn(),
+  ruleFindFirst: vi.fn(),
+  ruleCreate: vi.fn(),
+  ruleUpdate: vi.fn(),
   splitDeleteMany: vi.fn(),
   splitCreateMany: vi.fn(),
+  cacheUpsert: vi.fn(),
 }));
 
 const prismaMock = vi.hoisted(() => ({}) as Record<string, unknown>);
@@ -62,6 +66,15 @@ beforeEach(() => {
   db.transactionUpdateMany.mockResolvedValue({ count: 0 });
   db.transactionCount.mockResolvedValue(0);
   db.ruleFindMany.mockResolvedValue([]);
+  db.ruleFindFirst.mockResolvedValue(null);
+  db.ruleCreate.mockImplementation(({ data }: { data: Record<string, unknown> }) =>
+    Promise.resolve({ id: 'rule_new', ...data }),
+  );
+  db.ruleUpdate.mockImplementation(
+    ({ where, data }: { where: { id: string }; data: Record<string, unknown> }) =>
+      Promise.resolve({ id: where.id, pattern: '^WWWSTORE$', ...data }),
+  );
+  db.cacheUpsert.mockResolvedValue({});
   db.splitDeleteMany.mockResolvedValue({ count: 0 });
   db.splitCreateMany.mockResolvedValue({ count: 0 });
 
@@ -75,7 +88,13 @@ beforeEach(() => {
       updateMany: db.transactionUpdateMany,
       count: db.transactionCount,
     },
-    rule: { findMany: db.ruleFindMany },
+    rule: {
+      findMany: db.ruleFindMany,
+      findFirst: db.ruleFindFirst,
+      create: db.ruleCreate,
+      update: db.ruleUpdate,
+    },
+    merchantCategoryCache: { upsert: db.cacheUpsert },
     split: { deleteMany: db.splitDeleteMany, createMany: db.splitCreateMany },
     // applyRuleEngine wraps its writes in an interactive transaction; the split
     // endpoint uses the array form. Support both.
@@ -545,5 +564,195 @@ describe('POST /api/transactions/:id/split (§8 case 3)', () => {
     db.splitDeleteMany.mockResolvedValue({ count: 3 });
     const response = await request(app).delete(`/api/transactions/${TXN_ID}/split`).expect(200);
     expect(response.body).toEqual({ removed: 3 });
+  });
+});
+
+describe('GET /api/review-queue', () => {
+  const queueRow = {
+    id: 'txn_q1',
+    accountId: ACCOUNT_ID,
+    date: new Date('2026-05-02T00:00:00.000Z'),
+    postedDate: null,
+    description: 'TST* THE HALL - DOWNTOWN',
+    rawMerchant: 'TST* THE HALL - DOWNTOWN',
+    normalizedMerchant: 'THE HALL',
+    amount: 42.5,
+    currency: 'USD',
+    category: 'UNCATEGORIZED',
+    confidence: 0,
+    source: 'RULE',
+    transferPairId: null,
+    linkedRefundId: null,
+    splits: [],
+  };
+
+  beforeEach(() => {
+    db.transactionFindMany.mockResolvedValue([queueRow]);
+    db.transactionCount.mockResolvedValue(1);
+  });
+
+  it('returns the queue with its counts and the threshold it used', async () => {
+    const response = await request(app).get('/api/review-queue').expect(200);
+
+    expect(response.body.transactions).toHaveLength(1);
+    expect(response.body.transactions[0]).toMatchObject({
+      id: 'txn_q1',
+      normalizedMerchant: 'THE HALL',
+      category: 'UNCATEGORIZED',
+    });
+    expect(response.body.lowConfidenceThreshold).toBe(0.6);
+    expect(response.body.counts).toEqual({ uncategorized: 1, lowConfidence: 1 });
+  });
+
+  it('asks for UNCATEGORIZED rows and low-confidence AI answers, and nothing else', async () => {
+    await request(app).get('/api/review-queue').expect(200);
+
+    const where = db.transactionFindMany.mock.calls[0][0].where;
+    expect(where.OR).toEqual([
+      { category: 'UNCATEGORIZED' },
+      { source: 'LLM', confidence: { lt: 0.6 } },
+    ]);
+  });
+
+  it('never includes a confident rule match', async () => {
+    await request(app).get('/api/review-queue').expect(200);
+
+    const serialized = JSON.stringify(db.transactionFindMany.mock.calls[0][0].where);
+    expect(serialized).not.toContain('"RULE"');
+  });
+
+  it('can be scoped to one account', async () => {
+    await request(app).get(`/api/review-queue?accountId=${ACCOUNT_ID}`).expect(200);
+    expect(db.transactionFindMany.mock.calls[0][0].where.accountId).toBe(ACCOUNT_ID);
+  });
+
+  it('rejects a nonsense page size', async () => {
+    await request(app).get('/api/review-queue?limit=9999').expect(400);
+  });
+});
+
+describe('POST /api/transactions/:id/category', () => {
+  const TXN_ID = 'txn_override';
+
+  beforeEach(() => {
+    db.transactionFindUnique.mockResolvedValue({
+      id: TXN_ID,
+      accountId: ACCOUNT_ID,
+      date: new Date('2026-05-02T00:00:00.000Z'),
+      postedDate: null,
+      description: 'PAYPAL *WWWSTORE',
+      rawMerchant: 'PAYPAL *WWWSTORE',
+      normalizedMerchant: 'WWWSTORE',
+      amount: 129,
+      currency: 'USD',
+      category: 'UNCATEGORIZED',
+      confidence: 0,
+      source: 'RULE',
+      transferPairId: null,
+      linkedRefundId: null,
+      splits: [],
+      account: { userId: 'user_1' },
+    });
+  });
+
+  function override(body: Record<string, unknown>) {
+    return request(app).post(`/api/transactions/${TXN_ID}/category`).send(body);
+  }
+
+  it('stores the correction as MANUAL at full confidence', async () => {
+    await override({ category: 'BUSINESS' }).expect(200);
+
+    expect(db.transactionUpdate.mock.calls[0][0]).toMatchObject({
+      where: { id: TXN_ID },
+      data: { category: 'BUSINESS', confidence: 1, source: 'MANUAL' },
+    });
+  });
+
+  it('learns a rule for the merchant, anchored and above every built-in', async () => {
+    const response = await override({ category: 'BUSINESS' }).expect(200);
+
+    expect(db.ruleCreate.mock.calls[0][0].data).toMatchObject({
+      userId: 'user_1',
+      pattern: '^WWWSTORE$',
+      category: 'BUSINESS',
+      priority: 10,
+      learnedFromOverride: true,
+    });
+    expect(response.body.learnedRule).toMatchObject({
+      pattern: '^WWWSTORE$',
+      category: 'BUSINESS',
+    });
+  });
+
+  it('corrects the merchant cache so a stale AI answer cannot contradict the human', async () => {
+    await override({ category: 'BUSINESS' }).expect(200);
+
+    expect(db.cacheUpsert.mock.calls[0][0]).toMatchObject({
+      where: { normalizedMerchant: 'WWWSTORE' },
+      create: { normalizedMerchant: 'WWWSTORE', category: 'BUSINESS', confidence: 1 },
+      update: { category: 'BUSINESS', confidence: 1 },
+    });
+  });
+
+  it('updates the existing rule rather than adding a second one', async () => {
+    db.ruleFindFirst.mockResolvedValue({ id: 'rule_existing', pattern: '^WWWSTORE$' });
+
+    await override({ category: 'GROCERIES' }).expect(200);
+
+    expect(db.ruleCreate).not.toHaveBeenCalled();
+    expect(db.ruleUpdate.mock.calls[0][0]).toMatchObject({
+      where: { id: 'rule_existing' },
+      data: { category: 'GROCERIES', learnedFromOverride: true },
+    });
+  });
+
+  it('escapes a merchant containing regex characters', async () => {
+    db.transactionFindUnique.mockResolvedValue({
+      id: TXN_ID,
+      accountId: ACCOUNT_ID,
+      date: new Date('2026-05-02T00:00:00.000Z'),
+      postedDate: null,
+      description: 'A+B (CO.)',
+      rawMerchant: 'A+B (CO.)',
+      normalizedMerchant: 'A+B (CO.)',
+      amount: 1,
+      currency: 'USD',
+      category: 'UNCATEGORIZED',
+      confidence: 0,
+      source: 'RULE',
+      transferPairId: null,
+      linkedRefundId: null,
+      splits: [],
+      account: { userId: 'user_1' },
+    });
+
+    await override({ category: 'BUSINESS' }).expect(200);
+
+    const { pattern } = db.ruleCreate.mock.calls[0][0].data;
+    expect(pattern).toBe('^A\\+B \\(CO\\.\\)$');
+    expect(new RegExp(pattern).test('A+B (CO.)')).toBe(true);
+    expect(new RegExp(pattern).test('XA+B (CO.)Y')).toBe(false);
+  });
+
+  it('can correct one transaction without learning a rule', async () => {
+    await override({ category: 'BUSINESS', learn: false }).expect(200);
+
+    expect(db.transactionUpdate).toHaveBeenCalled();
+    expect(db.ruleCreate).not.toHaveBeenCalled();
+    expect(db.cacheUpsert).not.toHaveBeenCalled();
+  });
+
+  it('rejects a category outside the taxonomy', async () => {
+    await override({ category: 'SNACKS' }).expect(400);
+    expect(db.transactionUpdate).not.toHaveBeenCalled();
+  });
+
+  it('rejects a missing category', async () => {
+    await override({}).expect(400);
+  });
+
+  it('404s for a transaction that does not exist', async () => {
+    db.transactionFindUnique.mockResolvedValue(null);
+    await override({ category: 'BUSINESS' }).expect(404);
   });
 });

@@ -10,7 +10,9 @@ import type { RequestHandler } from 'express';
 import { z } from 'zod';
 
 import { getPrisma } from '../db';
+import { LOW_CONFIDENCE_THRESHOLD } from '../services/ai/categorize';
 import { CATEGORIES } from '../services/rules/categories';
+import { LEARNED_RULE_PRIORITY } from '../services/rules/defaults';
 import { HttpError } from '../middleware/errorHandler';
 import {
   CsvMappingError,
@@ -371,3 +373,144 @@ export const categorizeTransactions: RequestHandler = async (req, res) => {
 
   res.json(await applyRuleEngine(getPrisma(), { userId }));
 };
+
+const reviewQueueQuerySchema = z.object({
+  accountId: z.string().min(1).optional(),
+  limit: z.coerce.number().int().min(1).max(200).default(100),
+  offset: z.coerce.number().int().min(0).default(0),
+});
+
+/**
+ * GET /api/review-queue
+ *
+ * Everything a human still needs to look at: transactions no pass could resolve,
+ * plus AI answers the model itself was not confident about. A rule match is
+ * never here — those are deterministic and certain by construction.
+ */
+export const getReviewQueue: RequestHandler = async (req, res) => {
+  const { accountId, limit, offset } = reviewQueueQuerySchema.parse(req.query);
+
+  const where = {
+    ...(accountId ? { accountId } : {}),
+    OR: [
+      { category: 'UNCATEGORIZED' as const },
+      { source: 'LLM' as const, confidence: { lt: LOW_CONFIDENCE_THRESHOLD } },
+    ],
+  };
+
+  const [rows, total, uncategorized, lowConfidence] = await Promise.all([
+    getPrisma().transaction.findMany({
+      where,
+      orderBy: [{ date: 'desc' }, { id: 'asc' }],
+      take: limit,
+      skip: offset,
+      include: { splits: true },
+    }),
+    getPrisma().transaction.count({ where }),
+    getPrisma().transaction.count({
+      where: { ...(accountId ? { accountId } : {}), category: 'UNCATEGORIZED' },
+    }),
+    getPrisma().transaction.count({
+      where: {
+        ...(accountId ? { accountId } : {}),
+        source: 'LLM',
+        confidence: { lt: LOW_CONFIDENCE_THRESHOLD },
+      },
+    }),
+  ]);
+
+  res.json({
+    total,
+    limit,
+    offset,
+    counts: { uncategorized, lowConfidence },
+    lowConfidenceThreshold: LOW_CONFIDENCE_THRESHOLD,
+    transactions: rows.map(serializeTransaction),
+  });
+};
+
+const categoryOverrideSchema = z.object({
+  category: z.enum(CATEGORIES),
+  /**
+   * Whether to remember this for the merchant. On by default — teaching the
+   * system is the point of reviewing.
+   */
+  learn: z.boolean().default(true),
+});
+
+/**
+ * POST /api/transactions/:id/category
+ *
+ * A human's correction. Three things happen, and all three matter:
+ *
+ *   1. The transaction is stored MANUAL at full confidence, which every later
+ *      pass is required to leave alone (PROJECT_CONTEXT.md §7).
+ *   2. A learned Rule is written for the merchant at a priority above every
+ *      built-in, so future imports of the same merchant are categorized by rule
+ *      and never reach the LLM at all.
+ *   3. The merchant cache is corrected, so a stale AI answer cannot contradict
+ *      the human later.
+ */
+export const overrideCategory: RequestHandler = async (req, res) => {
+  const { category, learn } = categoryOverrideSchema.parse(req.body);
+  const transactionId = idParam(req);
+
+  const transaction = await getPrisma().transaction.findUnique({
+    where: { id: transactionId },
+    select: { id: true, normalizedMerchant: true, account: { select: { userId: true } } },
+  });
+  if (!transaction) throw new HttpError(404, 'No such transaction');
+
+  const userId = transaction.account.userId;
+  const merchant = transaction.normalizedMerchant;
+
+  await getPrisma().transaction.update({
+    where: { id: transactionId },
+    data: { category, confidence: 1, source: 'MANUAL' },
+  });
+
+  let rule = null;
+  if (learn && merchant) {
+    // Anchored so the rule matches this merchant and not merely anything
+    // containing it, and escaped so a merchant with regex characters in its
+    // name cannot become a pattern that matches half the account.
+    const pattern = `^${escapeRegExp(merchant)}$`;
+    const existing = await getPrisma().rule.findFirst({ where: { userId, pattern } });
+
+    rule = existing
+      ? await getPrisma().rule.update({
+          where: { id: existing.id },
+          data: { category, learnedFromOverride: true, priority: LEARNED_RULE_PRIORITY },
+        })
+      : await getPrisma().rule.create({
+          data: {
+            userId,
+            pattern,
+            category,
+            priority: LEARNED_RULE_PRIORITY,
+            learnedFromOverride: true,
+          },
+        });
+
+    await getPrisma().merchantCategoryCache.upsert({
+      where: { normalizedMerchant: merchant },
+      create: { normalizedMerchant: merchant, category, confidence: 1 },
+      update: { category, confidence: 1 },
+    });
+  }
+
+  const updated = await getPrisma().transaction.findUnique({
+    where: { id: transactionId },
+    include: { splits: true },
+  });
+
+  res.json({
+    transaction: serializeTransaction(updated!),
+    learnedRule: rule ? { id: rule.id, pattern: rule.pattern, category: rule.category } : null,
+  });
+};
+
+/** Escapes a string so it can be embedded in a regular expression literally. */
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}

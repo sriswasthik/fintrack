@@ -31,6 +31,12 @@ export interface RuleDefinition {
   priority: number;
 }
 
+/**
+ * Priority for a rule learned from a user's correction. Below every built-in,
+ * so a human's decision always wins (PROJECT_CONTEXT.md §7).
+ */
+export const LEARNED_RULE_PRIORITY = 10;
+
 /** A word that implies a category regardless of which merchant it belongs to. */
 const KEYWORD_PRIORITY = 200;
 /** A specific national brand. */
