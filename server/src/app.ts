@@ -7,6 +7,7 @@ import { accountsRouter } from './routes/accounts';
 import { dashboardRouter } from './routes/dashboard';
 import { healthRouter } from './routes/health';
 import { insightsRouter } from './routes/insights';
+import { summaryRouter } from './routes/summary';
 import { transactionsRouter } from './routes/transactions';
 
 /**
@@ -31,6 +32,7 @@ export function createApp() {
   app.use('/api', accountsRouter);
   app.use('/api', dashboardRouter);
   app.use('/api', insightsRouter);
+  app.use('/api', summaryRouter);
   app.use('/api', transactionsRouter);
 
   app.use(notFoundHandler);

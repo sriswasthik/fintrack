@@ -3,6 +3,7 @@ import { Link, Route, Routes } from 'react-router-dom';
 import { HomePage } from '@/pages/HomePage';
 import { DashboardPage } from '@/pages/DashboardPage';
 import { ReviewPage } from '@/pages/ReviewPage';
+import { SummaryPage } from '@/pages/SummaryPage';
 import { TransactionsPage } from '@/pages/TransactionsPage';
 import { UploadPage } from '@/pages/UploadPage';
 
@@ -23,6 +24,9 @@ export function App() {
           <Link to="/transactions" className="text-muted-foreground hover:text-foreground">
             Transactions
           </Link>
+          <Link to="/summary" className="text-muted-foreground hover:text-foreground">
+            Summary
+          </Link>
           <Link to="/review" className="text-muted-foreground hover:text-foreground">
             Review
           </Link>
@@ -33,6 +37,7 @@ export function App() {
         <Route path="/dashboard" element={<DashboardPage />} />
         <Route path="/upload" element={<UploadPage />} />
         <Route path="/transactions" element={<TransactionsPage />} />
+        <Route path="/summary" element={<SummaryPage />} />
         <Route path="/review" element={<ReviewPage />} />
       </Routes>
     </div>
