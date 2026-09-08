@@ -278,6 +278,44 @@ describe('false positives', () => {
     });
   });
 
+  it('separates the monthly bills from everyday spending exactly', () => {
+    // Every merchant the generator bills on a fixed day of the month, listed
+    // here rather than derived so that a change to the seed fails this test
+    // instead of quietly moving the goalposts.
+    const monthlyBills = [
+      'ADOBE',
+      'AMAZON PRIME',
+      'APPLE ICLOUD',
+      'DISNEY PLUS',
+      'LEMONADE INSURANCE',
+      'MINT MOBILE',
+      'NETFLIX',
+      'NEW YORK TIMES',
+      'OAKWOOD PROPERTY MGMT',
+      'PGE',
+      'PLANET FITNESS',
+      'SONIC FIBER',
+      'SPOTIFY',
+    ];
+
+    const classified = new Set(
+      SEEDED_MONTHS.flatMap((month) =>
+        findRecurringCharges(SEEDED, { month }).map((charge) => charge.merchant),
+      ),
+    );
+
+    // Nothing missed...
+    expect([...classified].sort()).toEqual(monthlyBills);
+
+    // ...and nothing else swept up. 63 everyday merchants, none of them called
+    // a subscription.
+    const everyday = [
+      ...new Set(SEEDED.map((t) => t.normalizedMerchant).filter((m) => !monthlyBills.includes(m))),
+    ];
+    expect(everyday.length).toBeGreaterThan(50);
+    expect(everyday.filter((merchant) => classified.has(merchant))).toEqual([]);
+  });
+
   it('produces a handful of insights over six months, not a wall of them', () => {
     // A panel nobody reads is worse than no panel. 700 transactions across six
     // months should yield single digits, and every one of them should be a
