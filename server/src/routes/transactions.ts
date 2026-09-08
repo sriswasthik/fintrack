@@ -4,8 +4,10 @@ import {
   categorizeTransactions,
   clearSplit,
   commitTransactions,
+  getReviewQueue,
   getTransaction,
   listTransactions,
+  overrideCategory,
   splitTransaction,
   uploadTransactions,
 } from '../controllers/transactions';
@@ -27,9 +29,15 @@ transactionsRouter.post('/transactions/commit', asyncHandler(commitTransactions)
 /** Re-run the deterministic engine over everything already stored. */
 transactionsRouter.post('/transactions/categorize', asyncHandler(categorizeTransactions));
 
+/** Everything a human still needs to look at. */
+transactionsRouter.get('/review-queue', asyncHandler(getReviewQueue));
+
 transactionsRouter.get('/transactions', asyncHandler(listTransactions));
 transactionsRouter.get('/transactions/:id', asyncHandler(getTransaction));
 
 /** Divide one charge across categories (§8 case 3). */
 transactionsRouter.post('/transactions/:id/split', asyncHandler(splitTransaction));
 transactionsRouter.delete('/transactions/:id/split', asyncHandler(clearSplit));
+
+/** A human's category correction, which also teaches a rule. */
+transactionsRouter.post('/transactions/:id/category', asyncHandler(overrideCategory));
