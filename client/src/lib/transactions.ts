@@ -112,3 +112,93 @@ export async function commitImport(input: {
   });
   return data;
 }
+
+/** The fixed taxonomy from PROJECT_CONTEXT.md §5, mirroring the Prisma enum. */
+export const CATEGORIES = [
+  'GROCERIES',
+  'DINING',
+  'TRANSPORTATION',
+  'HOUSING',
+  'UTILITIES',
+  'SUBSCRIPTIONS',
+  'ENTERTAINMENT',
+  'SHOPPING',
+  'HEALTH_FITNESS',
+  'TRAVEL',
+  'INCOME',
+  'TRANSFER',
+  'FEES_INTEREST',
+  'INSURANCE',
+  'EDUCATION',
+  'PERSONAL_CARE',
+  'GIFTS_DONATIONS',
+  'BUSINESS',
+  'REFUND',
+  'UNCATEGORIZED',
+] as const;
+
+export type Category = (typeof CATEGORIES)[number];
+
+export interface TransactionSplit {
+  id: string;
+  category: Category;
+  amount: number;
+  note: string | null;
+}
+
+export interface Transaction {
+  id: string;
+  accountId: string;
+  date: string;
+  postedDate: string | null;
+  description: string;
+  rawMerchant: string;
+  normalizedMerchant: string;
+  amount: number;
+  currency: string;
+  category: Category;
+  confidence: number;
+  source: 'RULE' | 'LLM' | 'MANUAL';
+  transferPairId: string | null;
+  linkedRefundId: string | null;
+  splits: TransactionSplit[];
+}
+
+export interface TransactionPage {
+  total: number;
+  limit: number;
+  offset: number;
+  transactions: Transaction[];
+}
+
+export interface SplitInput {
+  category: Category;
+  amount: number;
+  note?: string;
+}
+
+export async function fetchTransactions(params: {
+  accountId?: string;
+  category?: string;
+  limit?: number;
+  offset?: number;
+}): Promise<TransactionPage> {
+  const { data } = await api.get<TransactionPage>('/api/transactions', { params });
+  return data;
+}
+
+/** Divides one charge across categories. The server rejects a set that does not sum. */
+export async function splitTransaction(input: {
+  transactionId: string;
+  splits: SplitInput[];
+}): Promise<Transaction> {
+  const { data } = await api.post<{ transaction: Transaction }>(
+    `/api/transactions/${input.transactionId}/split`,
+    { splits: input.splits },
+  );
+  return data.transaction;
+}
+
+export async function clearSplit(transactionId: string): Promise<void> {
+  await api.delete(`/api/transactions/${transactionId}/split`);
+}

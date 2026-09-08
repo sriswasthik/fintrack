@@ -20,6 +20,7 @@
 import 'dotenv/config';
 
 import { createPrismaClient } from '../src/db';
+import { ensureDefaultRules } from '../src/services/rules/apply';
 import {
   ACCOUNTS,
   DEMO_USER,
@@ -92,6 +93,10 @@ async function main() {
     })),
   });
 
+  // The Phase 3 built-in rule set. Seeded here so a fresh database can run the
+  // deterministic engine straight away.
+  const seededRules = await ensureDefaultRules(prisma);
+
   const total = await prisma.transaction.count();
   const byCase = transactionsByEdgeCase(dataset);
 
@@ -99,6 +104,7 @@ async function main() {
   console.log(`  window        ${START_DATE} .. ${REFERENCE_DATE}`);
   console.log(`  accounts      ${user.accounts.map((a) => a.name).join(', ')}`);
   console.log(`  learned rules ${overrides.length}`);
+  console.log(`  default rules ${seededRules}`);
   console.log('  edge cases:');
   [...byCase.entries()]
     .sort(([a], [b]) => (a < b ? -1 : 1))

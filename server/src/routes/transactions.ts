@@ -1,6 +1,14 @@
 import { Router } from 'express';
 
-import { commitTransactions, uploadTransactions } from '../controllers/transactions';
+import {
+  categorizeTransactions,
+  clearSplit,
+  commitTransactions,
+  getTransaction,
+  listTransactions,
+  splitTransaction,
+  uploadTransactions,
+} from '../controllers/transactions';
 import { asyncHandler } from '../middleware/errorHandler';
 import { csvUpload } from '../middleware/upload';
 
@@ -13,5 +21,15 @@ transactionsRouter.post(
   asyncHandler(uploadTransactions),
 );
 
-/** Insert the rows the user confirmed. */
+/** Insert the rows the user confirmed, then run the deterministic engine. */
 transactionsRouter.post('/transactions/commit', asyncHandler(commitTransactions));
+
+/** Re-run the deterministic engine over everything already stored. */
+transactionsRouter.post('/transactions/categorize', asyncHandler(categorizeTransactions));
+
+transactionsRouter.get('/transactions', asyncHandler(listTransactions));
+transactionsRouter.get('/transactions/:id', asyncHandler(getTransaction));
+
+/** Divide one charge across categories (§8 case 3). */
+transactionsRouter.post('/transactions/:id/split', asyncHandler(splitTransaction));
+transactionsRouter.delete('/transactions/:id/split', asyncHandler(clearSplit));

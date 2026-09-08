@@ -1,6 +1,7 @@
 import { Link, Route, Routes } from 'react-router-dom';
 
 import { HomePage } from '@/pages/HomePage';
+import { TransactionsPage } from '@/pages/TransactionsPage';
 import { UploadPage } from '@/pages/UploadPage';
 
 export function App() {
@@ -14,11 +15,15 @@ export function App() {
           <Link to="/upload" className="text-muted-foreground hover:text-foreground">
             Import
           </Link>
+          <Link to="/transactions" className="text-muted-foreground hover:text-foreground">
+            Transactions
+          </Link>
         </div>
       </nav>
       <Routes>
         <Route path="/" element={<HomePage />} />
         <Route path="/upload" element={<UploadPage />} />
+        <Route path="/transactions" element={<TransactionsPage />} />
       </Routes>
     </div>
   );

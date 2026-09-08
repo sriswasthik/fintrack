@@ -10,6 +10,7 @@ import type { RequestHandler } from 'express';
 import { z } from 'zod';
 
 import { getPrisma } from '../db';
+import { CATEGORIES } from '../services/rules/categories';
 import { HttpError } from '../middleware/errorHandler';
 import {
   CsvMappingError,
@@ -20,6 +21,7 @@ import {
   type ColumnMapping,
 } from '../services/parsing/csv';
 import { dateRangeOf, flagDuplicates, type ExistingTransaction } from '../services/parsing/dedup';
+import { applyRuleEngine, userIdForAccount } from '../services/rules/apply';
 
 /** An explicit column mapping supplied by the client's mapping UI. */
 const columnMappingSchema = z.object({
@@ -187,9 +189,185 @@ export const commitTransactions: RequestHandler = async (req, res) => {
     });
   }
 
+  // The deterministic pass runs immediately, before anything reaches the LLM
+  // fallback (PROJECT_CONTEXT.md §4). It needs the owning user because transfer
+  // pairing looks across the user's other accounts.
+  const userId = await userIdForAccount(getPrisma(), accountId);
+  const categorization = userId ? await applyRuleEngine(getPrisma(), { userId }) : null;
+
   res.status(201).json({
     accountId,
     imported: toImport.length,
     skipped: skipped.length,
+    categorization,
   });
+};
+
+/** Express 5 types a route param as `string | string[]`; a single-segment id is always a string. */
+function idParam(req: { params: Record<string, string | string[] | undefined> }): string {
+  const value = req.params.id;
+  if (typeof value !== 'string' || !value) throw new HttpError(400, 'Missing transaction id');
+  return value;
+}
+
+const listQuerySchema = z.object({
+  accountId: z.string().min(1).optional(),
+  category: z.string().min(1).optional(),
+  limit: z.coerce.number().int().min(1).max(200).default(50),
+  offset: z.coerce.number().int().min(0).default(0),
+});
+
+/** The shape the client renders. Decimals are serialized as numbers. */
+function serializeTransaction(t: {
+  id: string;
+  accountId: string;
+  date: Date;
+  postedDate: Date | null;
+  description: string;
+  rawMerchant: string;
+  normalizedMerchant: string;
+  amount: unknown;
+  currency: string;
+  category: string;
+  confidence: number;
+  source: string;
+  transferPairId: string | null;
+  linkedRefundId: string | null;
+  splits?: { id: string; category: string; amount: unknown; note: string | null }[];
+}) {
+  return {
+    id: t.id,
+    accountId: t.accountId,
+    date: t.date.toISOString().slice(0, 10),
+    postedDate: t.postedDate ? t.postedDate.toISOString().slice(0, 10) : null,
+    description: t.description,
+    rawMerchant: t.rawMerchant,
+    normalizedMerchant: t.normalizedMerchant,
+    amount: Number(t.amount),
+    currency: t.currency,
+    category: t.category,
+    confidence: t.confidence,
+    source: t.source,
+    transferPairId: t.transferPairId,
+    linkedRefundId: t.linkedRefundId,
+    splits: (t.splits ?? []).map((s) => ({
+      id: s.id,
+      category: s.category,
+      amount: Number(s.amount),
+      note: s.note,
+    })),
+  };
+}
+
+/** GET /api/transactions */
+export const listTransactions: RequestHandler = async (req, res) => {
+  const { accountId, category, limit, offset } = listQuerySchema.parse(req.query);
+
+  const where = {
+    ...(accountId ? { accountId } : {}),
+    ...(category ? { category: category as never } : {}),
+  };
+
+  const [rows, total] = await Promise.all([
+    getPrisma().transaction.findMany({
+      where,
+      orderBy: [{ date: 'desc' }, { id: 'asc' }],
+      take: limit,
+      skip: offset,
+      include: { splits: true },
+    }),
+    getPrisma().transaction.count({ where }),
+  ]);
+
+  res.json({ total, limit, offset, transactions: rows.map(serializeTransaction) });
+};
+
+/** GET /api/transactions/:id */
+export const getTransaction: RequestHandler = async (req, res) => {
+  const transaction = await getPrisma().transaction.findUnique({
+    where: { id: idParam(req) },
+    include: { splits: true },
+  });
+  if (!transaction) throw new HttpError(404, 'No such transaction');
+  res.json({ transaction: serializeTransaction(transaction) });
+};
+
+const splitBodySchema = z.object({
+  splits: z
+    .array(
+      z.object({
+        category: z.enum(CATEGORIES),
+        amount: z.number().finite(),
+        note: z.string().max(200).optional(),
+      }),
+    )
+    // A single part is not a split — it is a recategorization, which is the
+    // override endpoint's job in Phase 4.
+    .min(2, 'A split needs at least two parts'),
+});
+
+/**
+ * POST /api/transactions/:id/split
+ *
+ * Divides one charge across categories (§8 case 3). The parts must sum to the
+ * transaction's total exactly, compared in whole cents — a split that loses or
+ * invents money would quietly corrupt every aggregate built on top of it.
+ */
+export const splitTransaction: RequestHandler = async (req, res) => {
+  const { splits } = splitBodySchema.parse(req.body);
+
+  const transaction = await getPrisma().transaction.findUnique({
+    where: { id: idParam(req) },
+    select: { id: true, amount: true },
+  });
+  if (!transaction) throw new HttpError(404, 'No such transaction');
+
+  const totalCents = Math.round(Number(transaction.amount) * 100);
+  const splitCents = splits.reduce((sum, s) => sum + Math.round(s.amount * 100), 0);
+
+  if (splitCents !== totalCents) {
+    throw new HttpError(400, 'Split amounts must sum to the transaction total', {
+      transactionTotal: totalCents / 100,
+      splitTotal: splitCents / 100,
+      difference: (splitCents - totalCents) / 100,
+    });
+  }
+
+  // Replacing rather than appending keeps the endpoint idempotent: posting a
+  // corrected split twice leaves one set of parts, not two.
+  await getPrisma().$transaction([
+    getPrisma().split.deleteMany({ where: { transactionId: transaction.id } }),
+    getPrisma().split.createMany({
+      data: splits.map((s) => ({
+        transactionId: transaction.id,
+        category: s.category,
+        amount: s.amount.toFixed(2),
+        note: s.note ?? null,
+      })),
+    }),
+  ]);
+
+  const updated = await getPrisma().transaction.findUnique({
+    where: { id: transaction.id },
+    include: { splits: true },
+  });
+
+  res.status(201).json({ transaction: serializeTransaction(updated!) });
+};
+
+/** DELETE /api/transactions/:id/split */
+export const clearSplit: RequestHandler = async (req, res) => {
+  const { count } = await getPrisma().split.deleteMany({
+    where: { transactionId: idParam(req) },
+  });
+  res.json({ removed: count });
+};
+
+/** POST /api/transactions/categorize — re-runs the deterministic pass. */
+export const categorizeTransactions: RequestHandler = async (req, res) => {
+  const { accountId } = z.object({ accountId: z.string().min(1) }).parse(req.body);
+  const userId = await userIdForAccount(getPrisma(), accountId);
+  if (!userId) throw new HttpError(404, `No account with id "${accountId}"`);
+
+  res.json(await applyRuleEngine(getPrisma(), { userId }));
 };
