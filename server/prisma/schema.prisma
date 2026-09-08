@@ -242,8 +242,18 @@ model AnomalyFlag {
   month    String
   explanation String
 
+  /// Stable identity for the underlying finding, e.g. "UNUSUAL_AMOUNT:<txn id>".
+  /// Detection is idempotent: re-running it upserts on this rather than
+  /// producing a second copy of a flag the user has already seen.
+  fingerprint String
+
+  /// Set when the user dismisses the flag. Dismissals are kept rather than
+  /// deleted so a later detection pass cannot resurrect them.
+  dismissedAt DateTime?
+
   createdAt DateTime @default(now())
 
+  @@unique([userId, fingerprint])
   @@index([userId, month])
   @@index([transactionId])
   @@index([type])

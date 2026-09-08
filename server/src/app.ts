@@ -6,6 +6,7 @@ import { errorHandler, notFoundHandler } from './middleware/errorHandler';
 import { accountsRouter } from './routes/accounts';
 import { dashboardRouter } from './routes/dashboard';
 import { healthRouter } from './routes/health';
+import { insightsRouter } from './routes/insights';
 import { transactionsRouter } from './routes/transactions';
 
 /**
@@ -29,6 +30,7 @@ export function createApp() {
   app.use('/api', healthRouter);
   app.use('/api', accountsRouter);
   app.use('/api', dashboardRouter);
+  app.use('/api', insightsRouter);
   app.use('/api', transactionsRouter);
 
   app.use(notFoundHandler);

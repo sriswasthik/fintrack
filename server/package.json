@@ -17,7 +17,8 @@
     "test-data:export": "tsx scripts/export-test-data.ts",
     "rules:apply": "tsx scripts/apply-rules.ts",
     "eval:categorize": "tsx scripts/eval-categorize.ts",
-    "llm:apply": "tsx scripts/apply-llm.ts"
+    "llm:apply": "tsx scripts/apply-llm.ts",
+    "anomalies:detect": "tsx scripts/detect-anomalies.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.124.0",
