@@ -1,6 +1,7 @@
 import { Link, Route, Routes } from 'react-router-dom';
 
 import { HomePage } from '@/pages/HomePage';
+import { DashboardPage } from '@/pages/DashboardPage';
 import { ReviewPage } from '@/pages/ReviewPage';
 import { TransactionsPage } from '@/pages/TransactionsPage';
 import { UploadPage } from '@/pages/UploadPage';
@@ -9,9 +10,12 @@ export function App() {
   return (
     <div className="min-h-svh">
       <nav className="border-b">
-        <div className="mx-auto flex max-w-5xl items-center gap-4 p-4 text-sm">
+        <div className="mx-auto flex max-w-6xl flex-wrap items-center gap-x-4 gap-y-1 p-4 text-sm">
           <Link to="/" className="font-semibold">
             FinTrack
+          </Link>
+          <Link to="/dashboard" className="text-muted-foreground hover:text-foreground">
+            Dashboard
           </Link>
           <Link to="/upload" className="text-muted-foreground hover:text-foreground">
             Import
@@ -26,6 +30,7 @@ export function App() {
       </nav>
       <Routes>
         <Route path="/" element={<HomePage />} />
+        <Route path="/dashboard" element={<DashboardPage />} />
         <Route path="/upload" element={<UploadPage />} />
         <Route path="/transactions" element={<TransactionsPage />} />
         <Route path="/review" element={<ReviewPage />} />

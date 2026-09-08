@@ -4,6 +4,7 @@ import helmet from 'helmet';
 
 import { errorHandler, notFoundHandler } from './middleware/errorHandler';
 import { accountsRouter } from './routes/accounts';
+import { dashboardRouter } from './routes/dashboard';
 import { healthRouter } from './routes/health';
 import { transactionsRouter } from './routes/transactions';
 
@@ -27,6 +28,7 @@ export function createApp() {
 
   app.use('/api', healthRouter);
   app.use('/api', accountsRouter);
+  app.use('/api', dashboardRouter);
   app.use('/api', transactionsRouter);
 
   app.use(notFoundHandler);

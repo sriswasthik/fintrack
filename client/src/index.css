@@ -31,6 +31,10 @@
   --color-chart-3: var(--chart-3);
   --color-chart-4: var(--chart-4);
   --color-chart-5: var(--chart-5);
+  --color-chart-6: var(--chart-6);
+  --color-chart-grid: var(--chart-grid);
+  --color-chart-axis: var(--chart-axis);
+  --color-chart-positive: var(--chart-positive);
 }
 
 :root {
@@ -53,11 +57,23 @@
   --border: oklch(0.922 0 0);
   --input: oklch(0.922 0 0);
   --ring: oklch(0.708 0 0);
-  --chart-1: oklch(0.646 0.222 41.116);
-  --chart-2: oklch(0.6 0.118 184.704);
-  --chart-3: oklch(0.398 0.07 227.392);
-  --chart-4: oklch(0.828 0.189 84.429);
-  --chart-5: oklch(0.769 0.188 70.08);
+  /* Categorical series palette. Validated with the data-viz validator against
+     this theme's card surface (#ffffff light / #171717 dark): lightness band,
+     chroma floor, adjacent-pair CVD separation and normal-vision floor all
+     pass in both modes. The slot ORDER is the colourblind-safety mechanism —
+     re-ordering these re-runs the gate, so do not shuffle them casually.
+     Three light slots sit below 3:1 on white, so every chart using them ships
+     direct labels and a table view. */
+  --chart-1: #2a78d6;
+  --chart-2: #eb6834;
+  --chart-3: #1baf7a;
+  --chart-4: #eda100;
+  --chart-5: #e87ba4;
+  --chart-6: #008300;
+  /* Chart chrome: recessive by design. */
+  --chart-grid: #e1e0d9;
+  --chart-axis: #898781;
+  --chart-positive: #006300;
 }
 
 .dark {
@@ -79,11 +95,16 @@
   --border: oklch(1 0 0 / 10%);
   --input: oklch(1 0 0 / 15%);
   --ring: oklch(0.556 0 0);
-  --chart-1: oklch(0.488 0.243 264.376);
-  --chart-2: oklch(0.696 0.17 162.48);
-  --chart-3: oklch(0.769 0.188 70.08);
-  --chart-4: oklch(0.627 0.265 303.9);
-  --chart-5: oklch(0.645 0.246 16.439);
+  /* The same six hues, re-stepped for the dark surface — not an automatic flip. */
+  --chart-1: #3987e5;
+  --chart-2: #d95926;
+  --chart-3: #199e70;
+  --chart-4: #c98500;
+  --chart-5: #d55181;
+  --chart-6: #008300;
+  --chart-grid: #2c2c2a;
+  --chart-axis: #898781;
+  --chart-positive: #0ca30c;
 }
 
 @layer base {

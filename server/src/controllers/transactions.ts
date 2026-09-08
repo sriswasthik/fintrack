@@ -11,6 +11,7 @@ import { z } from 'zod';
 
 import { getPrisma } from '../db';
 import { LOW_CONFIDENCE_THRESHOLD } from '../services/ai/categorize';
+import { monthWindow } from '../services/dashboard/window';
 import { CATEGORIES } from '../services/rules/categories';
 import { LEARNED_RULE_PRIORITY } from '../services/rules/defaults';
 import { HttpError } from '../middleware/errorHandler';
@@ -214,7 +215,12 @@ function idParam(req: { params: Record<string, string | string[] | undefined> })
 
 const listQuerySchema = z.object({
   accountId: z.string().min(1).optional(),
-  category: z.string().min(1).optional(),
+  category: z.enum(CATEGORIES).optional(),
+  /** YYYY-MM. Restricts the list to one calendar month, for dashboard drill-downs. */
+  month: z
+    .string()
+    .regex(/^\d{4}-(0[1-9]|1[0-2])$/, 'month must be YYYY-MM')
+    .optional(),
   limit: z.coerce.number().int().min(1).max(200).default(50),
   offset: z.coerce.number().int().min(0).default(0),
 });
@@ -263,11 +269,13 @@ function serializeTransaction(t: {
 
 /** GET /api/transactions */
 export const listTransactions: RequestHandler = async (req, res) => {
-  const { accountId, category, limit, offset } = listQuerySchema.parse(req.query);
+  const { accountId, category, month, limit, offset } = listQuerySchema.parse(req.query);
 
+  const monthRange = month ? monthWindow(month) : null;
   const where = {
     ...(accountId ? { accountId } : {}),
-    ...(category ? { category: category as never } : {}),
+    ...(category ? { category } : {}),
+    ...(monthRange ? { date: { gte: monthRange.from, lt: monthRange.to } } : {}),
   };
 
   const [rows, total] = await Promise.all([

@@ -241,13 +241,11 @@ describe('AnthropicMerchantCategorizer', () => {
   });
 
   it('leaves merchants unresolved when the response cannot be parsed', async () => {
-    const parse = vi
-      .fn()
-      .mockResolvedValue({
-        parsed_output: null,
-        usage: { input_tokens: 1, output_tokens: 1 },
-        stop_reason: 'refusal',
-      });
+    const parse = vi.fn().mockResolvedValue({
+      parsed_output: null,
+      usage: { input_tokens: 1, output_tokens: 1 },
+      stop_reason: 'refusal',
+    });
 
     const outcomes = await new AnthropicMerchantCategorizer({
       client: fakeClient(parse),
