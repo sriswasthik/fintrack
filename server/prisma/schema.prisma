@@ -267,8 +267,10 @@ model MonthlySummary {
   /// "YYYY-MM".
   month   String
   content String
-  /// The pre-computed aggregates the summary was generated from, kept so the
-  /// text can be checked against the numbers it claims (PROJECT_CONTEXT.md §7).
+  /// The pre-computed aggregates the summary was generated from, wrapped with a
+  /// note of how it was produced: `{ stats, generation }`. Kept so the text can
+  /// be checked against the numbers it claims (PROJECT_CONTEXT.md §7), and so a
+  /// later import that moves those numbers can be spotted as stale.
   statsSnapshot Json
 
   createdAt DateTime @default(now())
