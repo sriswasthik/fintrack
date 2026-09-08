@@ -19,6 +19,7 @@ import {
   toIsoMonth,
 } from '../services/dashboard/window';
 import { CATEGORIES } from '../services/rules/categories';
+import { resolveUserId } from './user-scope';
 
 const dashboardQuerySchema = z
   .object({
@@ -65,18 +66,7 @@ export const getDashboard: RequestHandler = async (req, res) => {
 
   const previous = comparisonWindow(window, month);
 
-  // Without a user in the request (auth arrives in Phase 9) the dashboard is
-  // scoped to whichever account was asked for, or to the single demo user.
-  const userId = query.accountId
-    ? (
-        await getPrisma().account.findUnique({
-          where: { id: query.accountId },
-          select: { userId: true },
-        })
-      )?.userId
-    : (await getPrisma().user.findFirst({ select: { id: true }, orderBy: { createdAt: 'asc' } }))
-        ?.id;
-
+  const userId = await resolveUserId(getPrisma(), query.accountId);
   if (!userId) throw new HttpError(404, 'No account or user to build a dashboard for');
 
   const result = await aggregateDashboard(getPrisma(), {
