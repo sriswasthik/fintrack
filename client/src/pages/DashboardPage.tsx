@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 
 import { CategoryDonut } from '@/components/dashboard/CategoryDonut';
 import { CategoryDrilldown } from '@/components/dashboard/CategoryDrilldown';
+import { InsightsPanel } from '@/components/dashboard/InsightsPanel';
 import { SpendOverTime } from '@/components/dashboard/SpendOverTime';
 import { StatTile } from '@/components/dashboard/StatTile';
 import { Button } from '@/components/ui/button';
@@ -198,6 +199,13 @@ export function DashboardPage() {
           hint={data ? `${data.previous.transactions} last period` : undefined}
         />
       </section>
+
+      {/* Above the charts: an unexpected charge is the one thing on this page a
+          person might need to act on today. */}
+      <InsightsPanel
+        month={currentMonth ?? undefined}
+        accountId={accountId === 'all' ? undefined : accountId}
+      />
 
       <section className="grid gap-4 lg:grid-cols-5">
         <Card className="min-w-0 lg:col-span-2">
