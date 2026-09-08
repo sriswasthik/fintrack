@@ -87,6 +87,21 @@ function readSnapshot(value: Prisma.JsonValue): SummarySnapshot | null {
 }
 
 /**
+ * A month with nothing in it does not need a paragraph written about it, and
+ * certainly does not need a model call to say so. Month navigation makes it
+ * cheap to land on one.
+ */
+function emptyMonth(stats: MonthlyStats): SummaryResult | null {
+  if (stats.transactions > 0) return null;
+  return {
+    content: `There were no transactions in ${stats.monthLabel}.`,
+    source: 'fallback',
+    calls: 0,
+    rejections: [],
+  };
+}
+
+/**
  * Runs the summarizer, degrading rather than failing when it is not configured.
  *
  * A misconfiguration is not hidden — it comes back named, and the caller
@@ -97,13 +112,19 @@ async function generate(
   summarizer: MonthlySummarizer,
   stats: MonthlyStats,
 ): Promise<{ result: SummaryResult; unavailable?: string }> {
+  const empty = emptyMonth(stats);
+  if (empty) return { result: empty };
+
   try {
     return { result: await summarizer.summarize(stats) };
   } catch (error) {
     if (error instanceof SummarizerConfigurationError) {
+      // The SDK's own message names the missing credential and is worth having
+      // in the server log; it is not worth putting in front of a reader.
+      console.warn(`Monthly summary unavailable: ${error.message}`);
       return {
         result: { content: renderFallback(stats), source: 'fallback', calls: 0, rejections: [] },
-        unavailable: `The summary model is not available: ${error.message}`,
+        unavailable: 'the summary model is not configured on this server.',
       };
     }
     throw error;
@@ -185,14 +206,21 @@ export async function regenerateMonthlySummary(
   return write(prisma, query, stats, await generate(summarizer, stats));
 }
 
-/** Persists a generated summary, unless the model was never reached. */
+/**
+ * Persists a generated summary, unless no model call was actually spent.
+ *
+ * That one rule covers both cases where caching would be wrong: an empty month
+ * (free to recompute, and it would litter the table) and a missing credential
+ * (cache it and fixing the key would change nothing until someone regenerated).
+ * A fallback after two rejected drafts *is* cached — those calls were spent.
+ */
 async function write(
   prisma: PrismaClient,
   query: SummaryQuery,
   stats: MonthlyStats,
   { result, unavailable }: { result: SummaryResult; unavailable?: string },
 ): Promise<MonthlySummaryRecord> {
-  if (unavailable) {
+  if (result.calls === 0) {
     return {
       month: query.month,
       content: result.content,
@@ -201,7 +229,7 @@ async function write(
       cached: false,
       stale: false,
       generatedAt: new Date().toISOString(),
-      unavailable,
+      ...(unavailable ? { unavailable } : {}),
     };
   }
   return persist(prisma, query, stats, result);

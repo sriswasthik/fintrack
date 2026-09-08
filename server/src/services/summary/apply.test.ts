@@ -205,6 +205,43 @@ describe('regenerateMonthlySummary', () => {
   });
 });
 
+describe('a month with nothing in it', () => {
+  const empty: MonthlyStats = {
+    ...JUNE,
+    spend: 0,
+    income: 0,
+    net: 0,
+    transactions: 0,
+    savingsRate: null,
+    topCategories: [],
+    topMerchant: null,
+    anomalies: [],
+  };
+
+  it('says so without spending a model call', async () => {
+    const { prisma, rows } = fakePrisma();
+    deps.buildMonthlyStats.mockResolvedValue(empty);
+    const summarizer = stubSummarizer();
+
+    const record = await getMonthlySummary(prisma, summarizer, { userId: 'u1', month: '2026-06' });
+
+    expect(summarizer.summarize).not.toHaveBeenCalled();
+    expect(record.content).toBe('There were no transactions in June 2026.');
+    // Free to recompute, so there is nothing worth storing.
+    expect(rows).toEqual([]);
+  });
+
+  it('will not spend one on regenerate either', async () => {
+    const { prisma } = fakePrisma();
+    deps.buildMonthlyStats.mockResolvedValue(empty);
+    const summarizer = stubSummarizer();
+
+    await regenerateMonthlySummary(prisma, summarizer, { userId: 'u1', month: '2026-06' });
+
+    expect(summarizer.summarize).not.toHaveBeenCalled();
+  });
+});
+
 describe('when the model is not configured', () => {
   const unconfigured: MonthlySummarizer = {
     summarize: vi.fn().mockRejectedValue(new SummarizerConfigurationError('No API key')),
@@ -219,7 +256,7 @@ describe('when the model is not configured', () => {
     });
 
     expect(record.source).toBe('fallback');
-    expect(record.unavailable).toContain('No API key');
+    expect(record.unavailable).toContain('not configured');
     expect(record.content).toContain('$8,959.49');
   });
 
