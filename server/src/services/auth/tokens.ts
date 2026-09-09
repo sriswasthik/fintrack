@@ -30,9 +30,16 @@ export const REFRESH_TOKEN_TTL_SECONDS = 30 * 24 * 60 * 60;
 
 export const REFRESH_COOKIE_NAME = 'fintrack_refresh';
 
-export interface AccessTokenPayload {
+/** What a verified access token tells us about the caller. */
+export interface AccessTokenClaims {
   /** The user this token authenticates. */
-  sub: string;
+  userId: string;
+  /**
+   * True for a session handed out by demo mode. Carried in the token rather
+   * than looked up per request, so a read-only session cannot be widened by
+   * anything that happens in the database afterwards.
+   */
+  demo: boolean;
 }
 
 export interface RefreshTokenPayload {
@@ -65,22 +72,29 @@ function secret(name: 'JWT_ACCESS_SECRET' | 'JWT_REFRESH_SECRET'): string {
   return value;
 }
 
-export function signAccessToken(userId: string): string {
+export function signAccessToken(
+  userId: string,
+  options: { demo?: boolean; expiresIn?: number } = {},
+): string {
   // A jti makes every issued token distinct. Two tokens for the same user in
   // the same second would otherwise be byte-identical, which makes a refresh
   // look like it did nothing and leaves nothing to identify a token by in a
   // log or a future revocation list.
-  return jwt.sign({ sub: userId, jti: randomUUID() }, secret('JWT_ACCESS_SECRET'), {
-    expiresIn: ACCESS_TOKEN_TTL_SECONDS,
+  const claims = { sub: userId, jti: randomUUID(), ...(options.demo ? { demo: true } : {}) };
+  return jwt.sign(claims, secret('JWT_ACCESS_SECRET'), {
+    expiresIn: options.expiresIn ?? ACCESS_TOKEN_TTL_SECONDS,
   });
 }
 
-/** The user id in a valid access token, or null for anything else. */
-export function verifyAccessToken(token: string): string | null {
+/** The claims in a valid access token, or null for anything else. */
+export function verifyAccessToken(token: string): AccessTokenClaims | null {
   try {
     const payload = jwt.verify(token, secret('JWT_ACCESS_SECRET'));
     if (typeof payload === 'string' || typeof payload.sub !== 'string') return null;
-    return payload.sub;
+    // Anything other than an explicit `true` is a normal session. A token
+    // cannot be forged into a demo one, but it must not be possible to fall
+    // *out* of demo by sending an odd value either.
+    return { userId: payload.sub, demo: payload.demo === true };
   } catch (error) {
     // A malformed or expired token is a normal thing for a client to send; a
     // missing secret is not, and must not be swallowed as "unauthorized".

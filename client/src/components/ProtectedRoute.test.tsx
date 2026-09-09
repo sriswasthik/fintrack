@@ -11,8 +11,10 @@ const useAuthMock = vi.mocked(useAuth);
 const session = (over: Partial<ReturnType<typeof useAuth>> = {}) => ({
   user: null,
   isRestoring: false,
+  isDemo: false,
   signIn: vi.fn(),
   signUp: vi.fn(),
+  startDemo: vi.fn(),
   signOut: vi.fn(),
   ...over,
 });
@@ -67,5 +69,54 @@ describe('ProtectedRoute', () => {
     expect(screen.getByText('Restoring your session…')).toBeInTheDocument();
     expect(screen.queryByText('the login page')).not.toBeInTheDocument();
     expect(screen.queryByText('the dashboard')).not.toBeInTheDocument();
+  });
+});
+
+describe('a write-only page during a demo', () => {
+  it('explains why rather than showing a form that cannot be submitted', () => {
+    useAuthMock.mockReturnValue(
+      session({ user: { id: 'user_demo', email: 'demo@fintrack.local', name: null }, isDemo: true }),
+    );
+
+    render(
+      <MemoryRouter initialEntries={['/upload']}>
+        <Routes>
+          <Route
+            path="/upload"
+            element={
+              <ProtectedRoute writes>
+                <p>the import form</p>
+              </ProtectedRoute>
+            }
+          />
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    expect(screen.getByText(/not part of the demo/i)).toBeInTheDocument();
+    expect(screen.queryByText('the import form')).not.toBeInTheDocument();
+  });
+
+  it('leaves the same page alone for a real session', () => {
+    useAuthMock.mockReturnValue(
+      session({ user: { id: 'user_1', email: 'alice@example.test', name: 'Alice' } }),
+    );
+
+    render(
+      <MemoryRouter initialEntries={['/upload']}>
+        <Routes>
+          <Route
+            path="/upload"
+            element={
+              <ProtectedRoute writes>
+                <p>the import form</p>
+              </ProtectedRoute>
+            }
+          />
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    expect(screen.getByText('the import form')).toBeInTheDocument();
   });
 });

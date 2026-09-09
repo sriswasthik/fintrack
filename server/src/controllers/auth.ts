@@ -22,6 +22,7 @@ import {
   MIN_PASSWORD_LENGTH,
   verifyPassword,
 } from '../services/auth/passwords';
+import { DEMO_SESSION_TTL_SECONDS, demoModeEnabled, demoUserEmail } from '../services/auth/demo';
 import {
   ACCESS_TOKEN_TTL_SECONDS,
   hashToken,
@@ -51,11 +52,16 @@ interface SessionUser {
 }
 
 /** Everything a signed-in client needs, and nothing it does not. */
-function sessionBody(user: SessionUser, accessToken: string) {
+function sessionBody(user: SessionUser, accessToken: string, options: { demo?: boolean } = {}) {
+  const demo = options.demo === true;
   return {
     accessToken,
-    expiresIn: ACCESS_TOKEN_TTL_SECONDS,
+    expiresIn: demo ? DEMO_SESSION_TTL_SECONDS : ACCESS_TOKEN_TTL_SECONDS,
     user: { id: user.id, email: user.email, name: user.name },
+    // The client renders a read-only banner and hides its write controls from
+    // this, and knows to renew a demo session by asking for a new one rather
+    // than by presenting a refresh cookie it was never given.
+    demo,
   };
 }
 
@@ -195,4 +201,38 @@ export const me: RequestHandler = async (req, res) => {
   });
   if (!user) throw new HttpError(401, 'Session no longer valid');
   res.json({ user });
+};
+
+/**
+ * POST /api/auth/demo — a read-only session on the shared sample account.
+ *
+ * No password, and deliberately no refresh cookie: this session is meant to
+ * expire and be re-requested, not to persist in somebody's browser. What it
+ * can do is bounded by `requireWritableSession`, not by what it is given here.
+ */
+export const demoSession: RequestHandler = async (_req, res) => {
+  if (!demoModeEnabled()) {
+    throw new HttpError(404, 'Demo mode is not enabled on this server');
+  }
+
+  const user = await getPrisma().user.findUnique({
+    where: { email: demoUserEmail() },
+    select: { id: true, email: true, name: true },
+  });
+
+  if (!user) {
+    // The deployment asked for demo mode but never loaded the data. Saying so
+    // is more useful than a 404 that looks like the feature does not exist.
+    throw new HttpError(503, 'The demo dataset has not been seeded on this server');
+  }
+
+  res.json(
+    sessionBody(
+      user,
+      signAccessToken(user.id, { demo: true, expiresIn: DEMO_SESSION_TTL_SECONDS }),
+      {
+        demo: true,
+      },
+    ),
+  );
 };

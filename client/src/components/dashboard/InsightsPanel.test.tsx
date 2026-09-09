@@ -6,6 +6,21 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { InsightsPanel } from '@/components/dashboard/InsightsPanel';
 import { dismissInsight, fetchInsights, type Insight } from '@/lib/insights';
 
+// This component adapts to a read-only demo session; these tests are about a
+// normal one. (The demo behaviour has its own tests.)
+vi.mock('@/context/auth-context', () => ({
+  useAuth: () => ({
+    user: { id: 'user_1', email: 'alice@example.test', name: 'Alice' },
+    isRestoring: false,
+    isDemo: false,
+    signIn: vi.fn(),
+    signUp: vi.fn(),
+    startDemo: vi.fn(),
+    signOut: vi.fn(),
+  }),
+}));
+
+
 vi.mock('@/lib/insights', async (importOriginal) => {
   const actual = await importOriginal();
   return { ...(actual as object), fetchInsights: vi.fn(), dismissInsight: vi.fn() };

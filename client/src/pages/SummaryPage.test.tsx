@@ -7,6 +7,21 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { SummaryPage } from '@/pages/SummaryPage';
 import { fetchSummary, regenerateSummary, type MonthlySummary } from '@/lib/summary';
 
+// This component adapts to a read-only demo session; these tests are about a
+// normal one. (The demo behaviour has its own tests.)
+vi.mock('@/context/auth-context', () => ({
+  useAuth: () => ({
+    user: { id: 'user_1', email: 'alice@example.test', name: 'Alice' },
+    isRestoring: false,
+    isDemo: false,
+    signIn: vi.fn(),
+    signUp: vi.fn(),
+    startDemo: vi.fn(),
+    signOut: vi.fn(),
+  }),
+}));
+
+
 vi.mock('@/lib/summary', async (importOriginal) => {
   const actual = await importOriginal();
   return { ...(actual as object), fetchSummary: vi.fn(), regenerateSummary: vi.fn() };

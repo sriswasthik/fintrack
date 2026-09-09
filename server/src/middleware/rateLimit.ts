@@ -12,6 +12,8 @@
 import type { Request } from 'express';
 import rateLimit, { ipKeyGenerator, type Options } from 'express-rate-limit';
 
+import { REFRESH_COOKIE_NAME } from '../services/auth/tokens';
+
 const WINDOW_MS = 15 * 60 * 1000;
 
 function keyBy(req: Request): string {
@@ -66,4 +68,25 @@ export const authLimiter = limiter(
   20,
   'Too many failed attempts. Wait a few minutes and try again.',
   { skipSuccessfulRequests: true },
+);
+
+/**
+ * The refresh route, which every page load hits before anything else.
+ *
+ * A refresh carrying no cookie is not an attempt at anything — it is what a
+ * signed-out browser does on startup to find out whether it is signed in, and
+ * it fails by design. Counting those would mean ordinary browsing, or one
+ * office behind a single address, could exhaust the budget and be locked out
+ * of signing in. A refresh that *does* present a cookie and fails is a
+ * different matter, and still counts.
+ */
+export function skipCookielessRefresh(req: Request): boolean {
+  if (process.env.NODE_ENV === 'test') return true;
+  return !req.cookies?.[REFRESH_COOKIE_NAME];
+}
+
+export const refreshLimiter = limiter(
+  20,
+  'Too many failed attempts. Wait a few minutes and try again.',
+  { skipSuccessfulRequests: true, skip: skipCookielessRefresh },
 );

@@ -16,8 +16,10 @@ const useAuthMock = vi.mocked(useAuth);
 const session = (over: Partial<ReturnType<typeof useAuth>> = {}) => ({
   user: null,
   isRestoring: false,
+  isDemo: false,
   signIn: vi.fn(),
   signUp: vi.fn(),
+  startDemo: vi.fn(),
   signOut: vi.fn(),
   ...over,
 });

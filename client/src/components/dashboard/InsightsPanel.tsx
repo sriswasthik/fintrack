@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { useAuth } from '@/context/auth-context';
 import {
   dismissInsight,
   fetchInsights,
@@ -40,7 +41,14 @@ const SEVERITY: Record<AnomalySeverity, { label: string; rail: string }> = {
 
 const money = (n: number) => n.toLocaleString('en-US', { style: 'currency', currency: 'USD' });
 
-function InsightRow({ insight, onDismiss }: { insight: Insight; onDismiss: () => void }) {
+function InsightRow({
+  insight,
+  onDismiss,
+}: {
+  insight: Insight;
+  /** Omitted for a read-only session, which has nothing to dismiss with. */
+  onDismiss?: () => void;
+}) {
   const severity = SEVERITY[insight.severity];
 
   return (
@@ -62,15 +70,17 @@ function InsightRow({ insight, onDismiss }: { insight: Insight; onDismiss: () =>
         )}
       </div>
 
-      <Button
-        variant="ghost"
-        size="icon"
-        className="text-muted-foreground hover:text-foreground -mt-1 shrink-0 self-start"
-        aria-label={`Dismiss: ${insight.explanation}`}
-        onClick={onDismiss}
-      >
-        ×
-      </Button>
+      {onDismiss && (
+        <Button
+          variant="ghost"
+          size="icon"
+          className="text-muted-foreground hover:text-foreground -mt-1 shrink-0 self-start"
+          aria-label={`Dismiss: ${insight.explanation}`}
+          onClick={onDismiss}
+        >
+          ×
+        </Button>
+      )}
     </li>
   );
 }
@@ -84,6 +94,7 @@ function InsightRow({ insight, onDismiss }: { insight: Insight; onDismiss: () =>
  */
 export function InsightsPanel({ month, accountId }: InsightsParams) {
   const queryClient = useQueryClient();
+  const { isDemo } = useAuth();
   const params: InsightsParams = {
     ...(month ? { month } : {}),
     ...(accountId ? { accountId } : {}),
@@ -143,7 +154,7 @@ export function InsightsPanel({ month, accountId }: InsightsParams) {
               <InsightRow
                 key={insight.id}
                 insight={insight}
-                onDismiss={() => dismiss.mutate(insight.id)}
+                onDismiss={isDemo ? undefined : () => dismiss.mutate(insight.id)}
               />
             ))}
           </ul>

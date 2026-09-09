@@ -17,6 +17,8 @@ declare global {
     interface Request {
       /** Set by requireAuth. Present on every protected route, absent elsewhere. */
       userId?: string;
+      /** Set by requireAuth. True when the caller holds a read-only demo session. */
+      isDemo?: boolean;
     }
   }
 }
@@ -34,10 +36,29 @@ export const requireAuth: RequestHandler = (req, _res, next: NextFunction) => {
   const token = bearerToken(req);
   if (!token) throw new HttpError(401, 'Authentication required');
 
-  const userId = verifyAccessToken(token);
-  if (!userId) throw new HttpError(401, 'Invalid or expired access token');
+  const claims = verifyAccessToken(token);
+  if (!claims) throw new HttpError(401, 'Invalid or expired access token');
 
-  req.userId = userId;
+  req.userId = claims.userId;
+  req.isDemo = claims.demo;
+  next();
+};
+
+/** Requests that only read. Everything else changes something for somebody. */
+const READ_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
+
+/**
+ * Refuses writes from a demo session.
+ *
+ * The demo account is shared by every anonymous visitor, so a single write
+ * would let one of them rewrite what the next one sees. Enforced here, in
+ * front of every data route, rather than by hiding buttons in the client:
+ * the client hides them too, but that is a courtesy, not the control.
+ */
+export const requireWritableSession: RequestHandler = (req, _res, next) => {
+  if (req.isDemo && !READ_METHODS.has(req.method)) {
+    throw new HttpError(403, 'The demo is read-only. Create an account to change anything.');
+  }
   next();
 };
 

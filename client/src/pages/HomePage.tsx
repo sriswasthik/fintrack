@@ -1,6 +1,7 @@
 import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 
+import { DemoButton } from '@/components/DemoButton';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -69,6 +70,7 @@ export function HomePage() {
               <Button asChild variant="outline">
                 <Link to="/login">Sign in</Link>
               </Button>
+              <DemoButton />
             </>
           )}
         </div>
