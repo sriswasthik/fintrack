@@ -5,10 +5,11 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { AuthProvider } from '@/context/AuthContext';
 import { useAuth } from '@/context/auth-context';
+import type * as AuthModule from '@/lib/auth';
 import { refreshSession, startDemo, type Session } from '@/lib/auth';
 
 vi.mock('@/lib/auth', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('@/lib/auth')>();
+  const actual = await importOriginal<typeof AuthModule>();
   return { ...actual, refreshSession: vi.fn(), startDemo: vi.fn(), logout: vi.fn() };
 });
 
