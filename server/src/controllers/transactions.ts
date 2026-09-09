@@ -14,6 +14,7 @@ import { LOW_CONFIDENCE_THRESHOLD } from '../services/ai/categorize';
 import { monthWindow } from '../services/dashboard/window';
 import { CATEGORIES } from '../services/rules/categories';
 import { LEARNED_RULE_PRIORITY } from '../services/rules/defaults';
+import { currentUserId } from '../middleware/auth';
 import { HttpError } from '../middleware/errorHandler';
 import {
   CsvMappingError,
@@ -24,7 +25,8 @@ import {
   type ColumnMapping,
 } from '../services/parsing/csv';
 import { dateRangeOf, flagDuplicates, type ExistingTransaction } from '../services/parsing/dedup';
-import { applyRuleEngine, userIdForAccount } from '../services/rules/apply';
+import { applyRuleEngine } from '../services/rules/apply';
+import { scopeToUser } from './user-scope';
 
 /** An explicit column mapping supplied by the client's mapping UI. */
 const columnMappingSchema = z.object({
@@ -74,11 +76,29 @@ const commitBodySchema = z.object({
   resolutions: z.record(z.string(), z.enum(['keep', 'skip'])).default({}),
 });
 
-async function requireAccount(accountId: string) {
-  const account = await getPrisma().account.findUnique({ where: { id: accountId } });
+/**
+ * The named account, provided it belongs to the caller.
+ *
+ * An account that exists but belongs to somebody else answers 404, not 403.
+ * A 403 would confirm the id is real, which is enough to enumerate another
+ * user's accounts one guess at a time; from outside, "not yours" and "not
+ * there" should be indistinguishable.
+ */
+async function requireAccount(userId: string, accountId: string) {
+  const account = await getPrisma().account.findFirst({ where: { id: accountId, userId } });
   if (!account) throw new HttpError(404, `No account with id "${accountId}"`);
   return account;
 }
+
+/**
+ * The `where` clause that ties a transaction to its owner.
+ *
+ * Every single-transaction route composes this rather than looking one up by
+ * id alone, so "no such transaction" and "not yours" are the same answer.
+ */
+const ownedTransaction = (userId: string, id: string) => ({ id, account: { userId } });
+
+const noSuchTransaction = () => new HttpError(404, 'No such transaction');
 
 /**
  * POST /api/transactions/upload
@@ -88,8 +108,9 @@ async function requireAccount(accountId: string) {
 export const uploadTransactions: RequestHandler = async (req, res) => {
   if (!req.file) throw new HttpError(400, 'Expected a CSV file in the "file" field');
 
+  const userId = currentUserId(req);
   const { accountId, mapping } = uploadBodySchema.parse(req.body);
-  await requireAccount(accountId);
+  await requireAccount(userId, accountId);
 
   const csvText = req.file.buffer.toString('utf8');
   if (!csvText.trim()) throw new HttpError(400, 'The uploaded file is empty');
@@ -168,8 +189,9 @@ export const uploadTransactions: RequestHandler = async (req, res) => {
  * lands as UNCATEGORIZED with zero confidence.
  */
 export const commitTransactions: RequestHandler = async (req, res) => {
+  const userId = currentUserId(req);
   const { accountId, rows, resolutions } = commitBodySchema.parse(req.body);
-  await requireAccount(accountId);
+  await requireAccount(userId, accountId);
 
   const skipped = rows.filter((row) => resolutions[String(row.index)] === 'skip');
   const toImport = rows.filter((row) => resolutions[String(row.index)] !== 'skip');
@@ -193,10 +215,10 @@ export const commitTransactions: RequestHandler = async (req, res) => {
   }
 
   // The deterministic pass runs immediately, before anything reaches the LLM
-  // fallback (PROJECT_CONTEXT.md §4). It needs the owning user because transfer
-  // pairing looks across the user's other accounts.
-  const userId = await userIdForAccount(getPrisma(), accountId);
-  const categorization = userId ? await applyRuleEngine(getPrisma(), { userId }) : null;
+  // fallback (PROJECT_CONTEXT.md §4). It is scoped to the caller because
+  // transfer pairing looks across their other accounts — and must never look
+  // across anybody else's.
+  const categorization = await applyRuleEngine(getPrisma(), { userId });
 
   res.status(201).json({
     accountId,
@@ -270,9 +292,15 @@ function serializeTransaction(t: {
 /** GET /api/transactions */
 export const listTransactions: RequestHandler = async (req, res) => {
   const { accountId, category, month, limit, offset } = listQuerySchema.parse(req.query);
+  // Naming an account that is not yours is a 404, not an empty list: silently
+  // dropping the filter would answer a question nobody asked.
+  const userId = await scopeToUser(getPrisma(), req, accountId);
 
   const monthRange = month ? monthWindow(month) : null;
   const where = {
+    // Ownership first, filters second. `accountId` narrows within the caller's
+    // own accounts; it can never widen past them.
+    account: { userId },
     ...(accountId ? { accountId } : {}),
     ...(category ? { category } : {}),
     ...(monthRange ? { date: { gte: monthRange.from, lt: monthRange.to } } : {}),
@@ -294,11 +322,11 @@ export const listTransactions: RequestHandler = async (req, res) => {
 
 /** GET /api/transactions/:id */
 export const getTransaction: RequestHandler = async (req, res) => {
-  const transaction = await getPrisma().transaction.findUnique({
-    where: { id: idParam(req) },
+  const transaction = await getPrisma().transaction.findFirst({
+    where: ownedTransaction(currentUserId(req), idParam(req)),
     include: { splits: true },
   });
-  if (!transaction) throw new HttpError(404, 'No such transaction');
+  if (!transaction) throw noSuchTransaction();
   res.json({ transaction: serializeTransaction(transaction) });
 };
 
@@ -326,11 +354,11 @@ const splitBodySchema = z.object({
 export const splitTransaction: RequestHandler = async (req, res) => {
   const { splits } = splitBodySchema.parse(req.body);
 
-  const transaction = await getPrisma().transaction.findUnique({
-    where: { id: idParam(req) },
+  const transaction = await getPrisma().transaction.findFirst({
+    where: ownedTransaction(currentUserId(req), idParam(req)),
     select: { id: true, amount: true },
   });
-  if (!transaction) throw new HttpError(404, 'No such transaction');
+  if (!transaction) throw noSuchTransaction();
 
   const totalCents = Math.round(Number(transaction.amount) * 100);
   const splitCents = splits.reduce((sum, s) => sum + Math.round(s.amount * 100), 0);
@@ -367,17 +395,26 @@ export const splitTransaction: RequestHandler = async (req, res) => {
 
 /** DELETE /api/transactions/:id/split */
 export const clearSplit: RequestHandler = async (req, res) => {
+  // Ownership is checked before the delete rather than folded into it: a
+  // deleteMany that matched nothing would answer 200 with removed: 0, which
+  // reads identically whether the transaction was unsplit or someone else's.
+  const transaction = await getPrisma().transaction.findFirst({
+    where: ownedTransaction(currentUserId(req), idParam(req)),
+    select: { id: true },
+  });
+  if (!transaction) throw noSuchTransaction();
+
   const { count } = await getPrisma().split.deleteMany({
-    where: { transactionId: idParam(req) },
+    where: { transactionId: transaction.id },
   });
   res.json({ removed: count });
 };
 
 /** POST /api/transactions/categorize — re-runs the deterministic pass. */
 export const categorizeTransactions: RequestHandler = async (req, res) => {
+  const userId = currentUserId(req);
   const { accountId } = z.object({ accountId: z.string().min(1) }).parse(req.body);
-  const userId = await userIdForAccount(getPrisma(), accountId);
-  if (!userId) throw new HttpError(404, `No account with id "${accountId}"`);
+  await requireAccount(userId, accountId);
 
   res.json(await applyRuleEngine(getPrisma(), { userId }));
 };
@@ -397,9 +434,13 @@ const reviewQueueQuerySchema = z.object({
  */
 export const getReviewQueue: RequestHandler = async (req, res) => {
   const { accountId, limit, offset } = reviewQueueQuerySchema.parse(req.query);
+  const userId = await scopeToUser(getPrisma(), req, accountId);
+
+  /** Owner first, then the optional account filter within their own accounts. */
+  const mine = { account: { userId }, ...(accountId ? { accountId } : {}) };
 
   const where = {
-    ...(accountId ? { accountId } : {}),
+    ...mine,
     OR: [
       { category: 'UNCATEGORIZED' as const },
       { source: 'LLM' as const, confidence: { lt: LOW_CONFIDENCE_THRESHOLD } },
@@ -415,15 +456,9 @@ export const getReviewQueue: RequestHandler = async (req, res) => {
       include: { splits: true },
     }),
     getPrisma().transaction.count({ where }),
+    getPrisma().transaction.count({ where: { ...mine, category: 'UNCATEGORIZED' } }),
     getPrisma().transaction.count({
-      where: { ...(accountId ? { accountId } : {}), category: 'UNCATEGORIZED' },
-    }),
-    getPrisma().transaction.count({
-      where: {
-        ...(accountId ? { accountId } : {}),
-        source: 'LLM',
-        confidence: { lt: LOW_CONFIDENCE_THRESHOLD },
-      },
+      where: { ...mine, source: 'LLM', confidence: { lt: LOW_CONFIDENCE_THRESHOLD } },
     }),
   ]);
 
@@ -456,21 +491,32 @@ const categoryOverrideSchema = z.object({
  *   2. A learned Rule is written for the merchant at a priority above every
  *      built-in, so future imports of the same merchant are categorized by rule
  *      and never reach the LLM at all.
- *   3. The merchant cache is corrected, so a stale AI answer cannot contradict
- *      the human later.
+ *   3. The correction is recorded in `CategoryOverride` — who, when, from what
+ *      to what — because a person disagreeing with the engine is the only
+ *      signal that says the engine was wrong.
+ *
+ * What deliberately does *not* happen any more is a write to
+ * `MerchantCategoryCache`. That table is keyed by merchant alone and shared by
+ * every user (PROJECT_CONTEXT.md §7), which is right for a model's opinion
+ * about what a merchant sells and wrong for one person's private preference:
+ * it would make one user's correction everybody's default, and let a stranger
+ * infer that somebody had categorized that merchant. The learned Rule below
+ * already guarantees this user never sees the wrong answer again, because a
+ * rule match runs before the LLM path is reached at all.
  */
 export const overrideCategory: RequestHandler = async (req, res) => {
+  const userId = currentUserId(req);
   const { category, learn } = categoryOverrideSchema.parse(req.body);
   const transactionId = idParam(req);
 
-  const transaction = await getPrisma().transaction.findUnique({
-    where: { id: transactionId },
-    select: { id: true, normalizedMerchant: true, account: { select: { userId: true } } },
+  const transaction = await getPrisma().transaction.findFirst({
+    where: ownedTransaction(userId, transactionId),
+    select: { id: true, normalizedMerchant: true, category: true },
   });
-  if (!transaction) throw new HttpError(404, 'No such transaction');
+  if (!transaction) throw noSuchTransaction();
 
-  const userId = transaction.account.userId;
   const merchant = transaction.normalizedMerchant;
+  const previousCategory = transaction.category;
 
   await getPrisma().transaction.update({
     where: { id: transactionId },
@@ -499,13 +545,18 @@ export const overrideCategory: RequestHandler = async (req, res) => {
             learnedFromOverride: true,
           },
         });
-
-    await getPrisma().merchantCategoryCache.upsert({
-      where: { normalizedMerchant: merchant },
-      create: { normalizedMerchant: merchant, category, confidence: 1 },
-      update: { category, confidence: 1 },
-    });
   }
+
+  await getPrisma().categoryOverride.create({
+    data: {
+      userId,
+      transactionId,
+      merchant,
+      fromCategory: previousCategory,
+      toCategory: category,
+      learnedRule: rule !== null,
+    },
+  });
 
   const updated = await getPrisma().transaction.findUnique({
     where: { id: transactionId },

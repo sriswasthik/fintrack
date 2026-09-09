@@ -19,7 +19,7 @@ import {
   toIsoMonth,
 } from '../services/dashboard/window';
 import { CATEGORIES } from '../services/rules/categories';
-import { resolveUserId } from './user-scope';
+import { scopeToUser } from './user-scope';
 
 const dashboardQuerySchema = z
   .object({
@@ -66,8 +66,7 @@ export const getDashboard: RequestHandler = async (req, res) => {
 
   const previous = comparisonWindow(window, month);
 
-  const userId = await resolveUserId(getPrisma(), query.accountId);
-  if (!userId) throw new HttpError(404, 'No account or user to build a dashboard for');
+  const userId = await scopeToUser(getPrisma(), req, query.accountId);
 
   const result = await aggregateDashboard(getPrisma(), {
     userId,

@@ -12,6 +12,7 @@ import {
   uploadTransactions,
 } from '../controllers/transactions';
 import { asyncHandler } from '../middleware/errorHandler';
+import { categorizeLimiter, uploadLimiter } from '../middleware/rateLimit';
 import { csvUpload } from '../middleware/upload';
 
 export const transactionsRouter = Router();
@@ -19,6 +20,7 @@ export const transactionsRouter = Router();
 /** Parse, normalize and flag duplicates. Writes nothing. */
 transactionsRouter.post(
   '/transactions/upload',
+  uploadLimiter,
   csvUpload.single('file'),
   asyncHandler(uploadTransactions),
 );
@@ -27,7 +29,11 @@ transactionsRouter.post(
 transactionsRouter.post('/transactions/commit', asyncHandler(commitTransactions));
 
 /** Re-run the deterministic engine over everything already stored. */
-transactionsRouter.post('/transactions/categorize', asyncHandler(categorizeTransactions));
+transactionsRouter.post(
+  '/transactions/categorize',
+  categorizeLimiter,
+  asyncHandler(categorizeTransactions),
+);
 
 /** Everything a human still needs to look at. */
 transactionsRouter.get('/review-queue', asyncHandler(getReviewQueue));
@@ -40,4 +46,8 @@ transactionsRouter.post('/transactions/:id/split', asyncHandler(splitTransaction
 transactionsRouter.delete('/transactions/:id/split', asyncHandler(clearSplit));
 
 /** A human's category correction, which also teaches a rule. */
-transactionsRouter.post('/transactions/:id/category', asyncHandler(overrideCategory));
+transactionsRouter.post(
+  '/transactions/:id/category',
+  categorizeLimiter,
+  asyncHandler(overrideCategory),
+);

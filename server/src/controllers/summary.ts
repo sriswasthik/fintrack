@@ -10,11 +10,10 @@ import type { RequestHandler } from 'express';
 import { z } from 'zod';
 
 import { getPrisma } from '../db';
-import { HttpError } from '../middleware/errorHandler';
 import { AnthropicMonthlySummarizer, type MonthlySummarizer } from '../services/ai/summarize';
 import { toIsoMonth } from '../services/dashboard/window';
 import { getMonthlySummary, regenerateMonthlySummary } from '../services/summary/apply';
-import { resolveUserId } from './user-scope';
+import { scopeToUser } from './user-scope';
 
 const summaryQuerySchema = z.object({
   month: z
@@ -41,8 +40,7 @@ async function resolve(req: Parameters<RequestHandler>[0]) {
   const month = query.month ?? toIsoMonth(new Date());
 
   const prisma = getPrisma();
-  const userId = await resolveUserId(prisma, query.accountId);
-  if (!userId) throw new HttpError(404, 'No account or user to summarize');
+  const userId = await scopeToUser(prisma, req, query.accountId);
 
   return { prisma, userId, month };
 }

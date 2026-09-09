@@ -1,9 +1,12 @@
+import cookieParser from 'cookie-parser';
 import cors from 'cors';
 import express from 'express';
 import helmet from 'helmet';
 
+import { authConfigurationHandler, requireAuth } from './middleware/auth';
 import { errorHandler, notFoundHandler } from './middleware/errorHandler';
 import { accountsRouter } from './routes/accounts';
+import { authRouter } from './routes/auth';
 import { dashboardRouter } from './routes/dashboard';
 import { healthRouter } from './routes/health';
 import { insightsRouter } from './routes/insights';
@@ -20,22 +23,34 @@ export function createApp() {
   app.use(helmet());
   app.use(
     cors({
+      // Locked to the client origin rather than reflecting whatever asked.
+      // `credentials` is what lets the refresh cookie cross from :5173 to :4000
+      // in development, and a wildcard origin is not allowed alongside it —
+      // which is the rule that makes an origin allowlist mandatory here.
       origin: process.env.CORS_ORIGIN ?? 'http://localhost:5173',
-      // The refresh token is delivered as an httpOnly cookie (see PROJECT_CONTEXT.md §3).
       credentials: true,
     }),
   );
   // A committed import is one large JSON body; the default 100kb is far too small.
   app.use(express.json({ limit: '25mb' }));
+  // The refresh token arrives as a cookie the client cannot read itself.
+  app.use(cookieParser());
 
+  // Public: liveness, and the routes a person uses before they have a session.
   app.use('/api', healthRouter);
-  app.use('/api', accountsRouter);
-  app.use('/api', dashboardRouter);
-  app.use('/api', insightsRouter);
-  app.use('/api', summaryRouter);
-  app.use('/api', transactionsRouter);
+  app.use('/api', authRouter);
+
+  // Everything below carries data belonging to somebody. `requireAuth` is
+  // mounted here, once, rather than per route, so a new route is protected by
+  // default and forgetting to add it is not a way to leak an account.
+  app.use('/api', requireAuth, accountsRouter);
+  app.use('/api', requireAuth, dashboardRouter);
+  app.use('/api', requireAuth, insightsRouter);
+  app.use('/api', requireAuth, summaryRouter);
+  app.use('/api', requireAuth, transactionsRouter);
 
   app.use(notFoundHandler);
+  app.use(authConfigurationHandler);
   app.use(errorHandler);
 
   return app;
