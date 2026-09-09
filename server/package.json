@@ -19,7 +19,8 @@
     "eval:categorize": "tsx scripts/eval-categorize.ts",
     "llm:apply": "tsx scripts/apply-llm.ts",
     "anomalies:detect": "tsx scripts/detect-anomalies.ts",
-    "summary:month": "tsx scripts/summarize-month.ts"
+    "summary:month": "tsx scripts/summarize-month.ts",
+    "accuracy:report": "tsx scripts/accuracy-report.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.124.0",

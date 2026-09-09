@@ -76,6 +76,16 @@ const TRAILING_NOISE = new Set([
   'DEBIT',
   'CREDIT',
   'POS',
+  // What the money was for, rather than who it went to. A return has to reduce
+  // to the same key as the purchase it reverses or Phase 3 can never match the
+  // two (§8 case 2).
+  'REFUND',
+  'RETURN',
+  'RETURNED',
+  'REVERSAL',
+  'ADJUSTMENT',
+  'FREELANCE',
+  'INVOICE',
 ]);
 
 /** Domain suffixes stripped from the end of a merchant token. */
@@ -138,6 +148,18 @@ const MERCHANT_ALIASES = new Map<string, string>([
   ['APPLE STORE', 'APPLE STORE'],
 ]);
 
+/**
+ * Card-payment descriptors, rewritten to `<BANK> CARD PAYMENT`.
+ *
+ * Every bank writes this line differently — "ONLINE PAYMENT TO CHASE CARD
+ * ...4021", "PAYMENT TO CAPITAL ONE CARD XXXX1234" — and the words that make it
+ * a payment rather than a purchase are scattered through the wrapper. Losing
+ * them means a credit-card payment is read as spending, which is the exact
+ * failure §8 case 1 exists to prevent, so this runs before anything is stripped.
+ */
+const CARD_PAYMENT_WRAPPER =
+  /^(?:ONLINE\s+|MOBILE\s+|AUTOMATIC\s+)?PAYMENT\s+(?:TO|FOR)\s+(.+?)\s+CARD\b.*$/;
+
 /** Merchants that always collapse to a single name regardless of what follows. */
 const MERCHANT_PREFIXES: [RegExp, string][] = [
   [/^ZELLE (?:TO|FROM)\b/, 'ZELLE'],
@@ -150,6 +172,8 @@ const MERCHANT_PREFIXES: [RegExp, string][] = [
 function isReferenceToken(token: string): boolean {
   if (/^#/.test(token)) return true;
   if (/^\d{3,}$/.test(token)) return true;
+  // Masked account digits: "...4021", "****4021", "XXXX4021".
+  if (/^(?:\.{2,}|\*{2,}|X{3,})\d{2,}$/.test(token)) return true;
   // Mixed alphanumerics with at least one digit and no separators, e.g. HM4X6422.
   if (token.length >= 5 && /\d/.test(token) && /^[A-Z0-9]+$/.test(token) && !/^\d+$/.test(token)) {
     return true;
@@ -180,6 +204,15 @@ export function normalizeMerchant(raw: string): string {
   if (!raw) return '';
 
   let value = raw.toUpperCase();
+
+  // 0. Card payments, before any stripping can lose the words that identify one.
+  //    The bank name is normalized on its own and the suffix put back after, so
+  //    the trailing-noise pass cannot eat the word PAYMENT on the way through.
+  const cardPayment = CARD_PAYMENT_WRAPPER.exec(value);
+  if (cardPayment) {
+    const bank = normalizeMerchant(cardPayment[1].trim());
+    return bank ? `${bank} CARD PAYMENT` : 'CARD PAYMENT';
+  }
 
   // 1. Split on the processor marker and decide which side is the merchant.
   const star = value.indexOf('*');
@@ -215,22 +248,21 @@ export function normalizeMerchant(raw: string): string {
   if (tokens.length === 0) return '';
 
   // 4. Trailing place names and country codes (foreign charges).
-  tokens = stripTrailingWhile(
-    tokens,
-    (t) => TRAILING_PLACES.has(t) || (t.length === 2 && COUNTRY_CODES.has(t)),
-  );
+  tokens = stripTrailingWhile(tokens, isTrailingPlace);
 
   const afterPlaces = tokens.join(' ');
   const aliased = lookupAlias(afterPlaces);
   if (aliased) return aliased;
 
-  // 5. Trailing noise words and domain suffixes, repeatedly — "REI.COM ONLINE"
-  //    needs both passes.
+  // 5. Trailing noise, places and domain suffixes, repeatedly. One pass is not
+  //    enough because each kind can hide another: "ZARA SOHO REFUND" only shows
+  //    its place once the purpose word is gone, and "REI.COM ONLINE" only shows
+  //    its domain once the outlet word is.
   let changed = true;
   while (changed && tokens.length > 1) {
     changed = false;
     const last = tokens[tokens.length - 1];
-    if (TRAILING_NOISE.has(last)) {
+    if (TRAILING_NOISE.has(last) || isTrailingPlace(last)) {
       tokens = tokens.slice(0, -1);
       changed = true;
       continue;
@@ -247,6 +279,10 @@ export function normalizeMerchant(raw: string): string {
 
   const result = tokens.join(' ').trim();
   return lookupAlias(result) ?? applyPrefixRules(result);
+}
+
+function isTrailingPlace(token: string): boolean {
+  return TRAILING_PLACES.has(token) || (token.length === 2 && COUNTRY_CODES.has(token));
 }
 
 function stripTrailingWhile(tokens: string[], predicate: (t: string) => boolean): string[] {

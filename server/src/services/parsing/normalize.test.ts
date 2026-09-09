@@ -116,6 +116,41 @@ describe('normalizeMerchant', () => {
     });
   });
 
+  describe('card payments keep what makes them transfers (§8 case 1)', () => {
+    it('rewrites a card-payment descriptor to BANK CARD PAYMENT', () => {
+      // If these lose the word PAYMENT, the rule that keeps a card payment out
+      // of spend stops matching and the payment is counted as a purchase.
+      expect(normalizeMerchant('ONLINE PAYMENT TO CHASE CARD ...4021')).toBe('CHASE CARD PAYMENT');
+      expect(normalizeMerchant('PAYMENT TO CAPITAL ONE CARD XXXX1234')).toBe(
+        'CAPITAL ONE CARD PAYMENT',
+      );
+      expect(normalizeMerchant('MOBILE PAYMENT TO AMEX CARD ****9001')).toBe('AMEX CARD PAYMENT');
+    });
+
+    it('treats masked account digits as the reference token they are', () => {
+      expect(normalizeMerchant('CHASE CARD ...4021')).toBe('CHASE CARD');
+      expect(normalizeMerchant('CHASE CARD XXXX4021')).toBe('CHASE CARD');
+    });
+  });
+
+  describe('returns reduce to the merchant, not the event (§8 case 2)', () => {
+    it.each([
+      ['ZARA #482 SOHO REFUND', 'ZARA'],
+      ['NIKE.COM REFUND', 'NIKE'],
+      ['BEST BUY #1120 REFUND', 'BEST BUY'],
+      ['REI.COM ONLINE REFUND', 'REI'],
+      ['WAYFAIR.COM ORDER REFUND', 'WAYFAIR'],
+    ])('reduces a return to the same key as the purchase it reverses: %s', (raw, expected) => {
+      // A refund can only be matched to its purchase if both normalize alike.
+      expect(normalizeMerchant(raw)).toBe(expected);
+    });
+
+    it('strips the purpose of a payment but not the payer', () => {
+      expect(normalizeMerchant('STRIPE TRANSFER FREELANCE')).toBe('STRIPE');
+      expect(normalizeMerchant('ACME CORP PAYROLL')).toBe('ACME CORP PAYROLL');
+    });
+  });
+
   describe('edges', () => {
     it('returns an empty string for empty input', () => {
       expect(normalizeMerchant('')).toBe('');

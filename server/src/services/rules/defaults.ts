@@ -70,7 +70,13 @@ export const DEFAULT_RULES: RuleDefinition[] = [
   ]),
 
   // --- Groceries ---------------------------------------------------------
-  ...keywords('GROCERIES', ['\\bGROCER', '\\bSUPERMARKET\\b']),
+  ...keywords('GROCERIES', [
+    '\\bGROCER',
+    '\\bSUPERMARKET\\b',
+    '\\bFARMERS M(AR)?KT?\\b',
+    '\\bFARMERS MARKET\\b',
+    '\\bBUTCHER\\b',
+  ]),
   ...brands('GROCERIES', [
     '^WHOLE FOODS',
     '^TRADER JOES',
@@ -80,6 +86,14 @@ export const DEFAULT_RULES: RuleDefinition[] = [
     '^PUBLIX',
     '^WEGMANS',
     '^SPROUTS',
+    // Chains a traveller's statement picks up. The list was US-only, which made
+    // a fortnight abroad look like a category the app had never heard of.
+    '^TESCO',
+    '^SAINSBURYS',
+    '^CARREFOUR',
+    '^LIDL$',
+    '^MERCADONA',
+    '^MONOPRIX',
   ]),
 
   // --- Dining ------------------------------------------------------------
@@ -91,6 +105,18 @@ export const DEFAULT_RULES: RuleDefinition[] = [
     '\\bTAQUERIA\\b',
     '\\bBREWING\\b',
     '\\bDELI\\b',
+    // Venue and cuisine words are as reliable as the ones above and cover the
+    // independents a brand list never will: a bakery is a bakery in any city.
+    '\\bBAKERY\\b',
+    '\\bPATISSERIE\\b',
+    '\\bRAMEN\\b',
+    '\\bNOODLE',
+    '\\bSUSHI\\b',
+    '\\bBISTRO\\b',
+    '\\bTRATTORIA\\b',
+    '\\bCANTINA\\b',
+    '\\bTAPROOM\\b',
+    '\\bSTEAKHOUSE\\b',
   ]),
   ...brands('DINING', [
     '^STARBUCKS',
@@ -197,6 +223,12 @@ export const DEFAULT_RULES: RuleDefinition[] = [
     '^HOME DEPOT',
     '^LOWES',
     '^REI$',
+    '^ALLBIRDS$',
+    '^MUJI$',
+    '^UNIQLO$',
+    '^EL CORTE INGLES$',
+    '^JOHN LEWIS$',
+    '^DECATHLON$',
   ]),
 
   // --- Health & fitness --------------------------------------------------
@@ -227,6 +259,14 @@ export const DEFAULT_RULES: RuleDefinition[] = [
     '^EXPEDIA',
     '^BOOKING',
     '^AMTRAK',
+    // National rail, for the same reason as the grocers above: AMTRAK was the
+    // only railway in the set.
+    '^SNCF$',
+    '^TRENITALIA$',
+    '^RENFE$',
+    '^EUROSTAR$',
+    '^DEUTSCHE BAHN',
+    '^VIA RAIL',
   ]),
 
   // --- Insurance ---------------------------------------------------------

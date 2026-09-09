@@ -66,6 +66,8 @@ export async function loadAnomalyTransactions(
       // The link lives on the purchase and points at the refund, so the reverse
       // side is how a refund finds the purchase it offsets.
       refundFor: { select: { category: true } },
+      // ...and the forward side is how a purchase knows what came back.
+      linkedRefund: { select: { amount: true } },
     },
     orderBy: { date: 'asc' },
   });
@@ -91,6 +93,9 @@ export async function loadAnomalyTransactions(
         amount: Number(row.amount),
         category:
           row.category === 'REFUND' && row.refundFor ? row.refundFor.category : row.category,
+        // A refund is stored as a negative amount, so what came back is its
+        // magnitude. Detection uses it to judge what the charge actually cost.
+        ...(row.linkedRefund ? { refunded: -Number(row.linkedRefund.amount) } : {}),
       },
     ];
   });

@@ -376,6 +376,23 @@ describe('detectAmountOutliers', () => {
     expect(detectAmountOutliers(withOutlier, { month: '2026-05' })).toHaveLength(1);
   });
 
+  it('judges a charge by what was kept, not what was rung up (§8 case 2)', () => {
+    const returned = { ...ordinary(20, 400), refunded: 400 };
+    // A $400 dinner returned in full is not $400 of dining, so it is not an
+    // unusual amount of it either.
+    expect(detectAmountOutliers([...dining, returned], { month: '2026-06' })).toEqual([]);
+  });
+
+  it('still flags what is left after a partial refund', () => {
+    const partly = { ...ordinary(20, 400), refunded: 100 };
+    const flags = detectAmountOutliers([...dining, partly], { month: '2026-06' });
+
+    expect(flags).toHaveLength(1);
+    // The explanation quotes the $300 that actually left, not the $400.
+    expect(flags[0].explanation).toContain('$300.00');
+    expect(flags[0].explanation).not.toContain('$400.00');
+  });
+
   it('ignores income, transfers and the uncategorized queue', () => {
     const noise = [
       ...dining,
