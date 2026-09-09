@@ -9,6 +9,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 // suite needs no database — CI runs it without Postgres.
 const db = vi.hoisted(() => ({
   accountFindUnique: vi.fn(),
+  accountFindFirst: vi.fn(),
   transactionFindMany: vi.fn(),
   transactionCreateMany: vi.fn(),
   transactionFindUnique: vi.fn(),
@@ -22,6 +23,7 @@ const db = vi.hoisted(() => ({
   splitDeleteMany: vi.fn(),
   splitCreateMany: vi.fn(),
   cacheUpsert: vi.fn(),
+  overrideCreate: vi.fn(),
 }));
 
 const prismaMock = vi.hoisted(() => ({}) as Record<string, unknown>);
@@ -32,6 +34,7 @@ vi.mock('../db', () => ({
 
 // vi.mock is hoisted above these imports, so `app` already sees the mocked db.
 import { app } from '../app';
+import { authHeader } from '../test/auth';
 
 const ACCOUNT_ID = 'acct_checking';
 
@@ -46,6 +49,7 @@ const GENERIC_CSV = [
 function upload(csv: string, fields: Record<string, string> = {}) {
   const req = request(app)
     .post('/api/transactions/upload')
+    .set(authHeader())
     .field('accountId', ACCOUNT_ID)
     .attach('file', Buffer.from(csv), 'export.csv');
   Object.entries(fields).forEach(([key, value]) => void req.field(key, value));
@@ -55,6 +59,12 @@ function upload(csv: string, fields: Record<string, string> = {}) {
 beforeEach(() => {
   vi.clearAllMocks();
   db.accountFindUnique.mockResolvedValue({
+    id: ACCOUNT_ID,
+    name: 'Everyday Checking',
+    userId: 'user_1',
+  });
+  // Ownership checks use findFirst with an `account: { userId }` clause.
+  db.accountFindFirst.mockResolvedValue({
     id: ACCOUNT_ID,
     name: 'Everyday Checking',
     userId: 'user_1',
@@ -75,15 +85,19 @@ beforeEach(() => {
       Promise.resolve({ id: where.id, pattern: '^WWWSTORE$', ...data }),
   );
   db.cacheUpsert.mockResolvedValue({});
+  db.overrideCreate.mockResolvedValue({});
   db.splitDeleteMany.mockResolvedValue({ count: 0 });
   db.splitCreateMany.mockResolvedValue({ count: 0 });
 
   Object.assign(prismaMock, {
-    account: { findUnique: db.accountFindUnique },
+    account: { findUnique: db.accountFindUnique, findFirst: db.accountFindFirst },
     transaction: {
       findMany: db.transactionFindMany,
       createMany: db.transactionCreateMany,
       findUnique: db.transactionFindUnique,
+      // Single-transaction routes now scope by owner, which means findFirst
+      // rather than findUnique. Same stub, so existing setups still apply.
+      findFirst: db.transactionFindUnique,
       update: db.transactionUpdate,
       updateMany: db.transactionUpdateMany,
       count: db.transactionCount,
@@ -95,6 +109,7 @@ beforeEach(() => {
       update: db.ruleUpdate,
     },
     merchantCategoryCache: { upsert: db.cacheUpsert },
+    categoryOverride: { create: db.overrideCreate },
     split: { deleteMany: db.splitDeleteMany, createMany: db.splitCreateMany },
     // applyRuleEngine wraps its writes in an interactive transaction; the split
     // endpoint uses the array form. Support both.
@@ -227,6 +242,7 @@ describe('POST /api/transactions/upload', () => {
   it('rejects a request with no file', async () => {
     const response = await request(app)
       .post('/api/transactions/upload')
+      .set(authHeader())
       .field('accountId', ACCOUNT_ID)
       .expect(400);
 
@@ -236,12 +252,13 @@ describe('POST /api/transactions/upload', () => {
   it('rejects a missing accountId', async () => {
     await request(app)
       .post('/api/transactions/upload')
+      .set(authHeader())
       .attach('file', Buffer.from(GENERIC_CSV), 'export.csv')
       .expect(400);
   });
 
   it('404s for an account that does not exist', async () => {
-    db.accountFindUnique.mockResolvedValue(null);
+    db.accountFindFirst.mockResolvedValue(null);
     const response = await upload(GENERIC_CSV).expect(404);
     expect(response.body.error).toMatch(/account/i);
   });
@@ -249,6 +266,7 @@ describe('POST /api/transactions/upload', () => {
   it('rejects a non-CSV upload', async () => {
     await request(app)
       .post('/api/transactions/upload')
+      .set(authHeader())
       .field('accountId', ACCOUNT_ID)
       .attach('file', Buffer.from('%PDF-1.4'), {
         filename: 'statement.pdf',
@@ -332,6 +350,7 @@ describe('POST /api/transactions/commit', () => {
   it('inserts every row as UNCATEGORIZED with zero confidence', async () => {
     const response = await request(app)
       .post('/api/transactions/commit')
+      .set(authHeader())
       .send({ accountId: ACCOUNT_ID, rows, resolutions: {} })
       .expect(201);
 
@@ -355,6 +374,7 @@ describe('POST /api/transactions/commit', () => {
   it('honours a skip resolution', async () => {
     const response = await request(app)
       .post('/api/transactions/commit')
+      .set(authHeader())
       .send({ accountId: ACCOUNT_ID, rows, resolutions: { '2': 'skip' } })
       .expect(201);
 
@@ -365,6 +385,7 @@ describe('POST /api/transactions/commit', () => {
   it('imports a flagged row when the user chooses keep', async () => {
     await request(app)
       .post('/api/transactions/commit')
+      .set(authHeader())
       .send({ accountId: ACCOUNT_ID, rows, resolutions: { '2': 'keep' } })
       .expect(201);
 
@@ -374,6 +395,7 @@ describe('POST /api/transactions/commit', () => {
   it('does not touch the database when every row is skipped', async () => {
     const response = await request(app)
       .post('/api/transactions/commit')
+      .set(authHeader())
       .send({ accountId: ACCOUNT_ID, rows, resolutions: { '1': 'skip', '2': 'skip' } })
       .expect(201);
 
@@ -384,6 +406,7 @@ describe('POST /api/transactions/commit', () => {
   it('rejects an empty row set', async () => {
     await request(app)
       .post('/api/transactions/commit')
+      .set(authHeader())
       .send({ accountId: ACCOUNT_ID, rows: [], resolutions: {} })
       .expect(400);
   });
@@ -391,14 +414,16 @@ describe('POST /api/transactions/commit', () => {
   it('rejects a malformed row', async () => {
     await request(app)
       .post('/api/transactions/commit')
+      .set(authHeader())
       .send({ accountId: ACCOUNT_ID, rows: [{ ...rows[0], date: '01/03/2026' }], resolutions: {} })
       .expect(400);
   });
 
   it('404s for an unknown account', async () => {
-    db.accountFindUnique.mockResolvedValue(null);
+    db.accountFindFirst.mockResolvedValue(null);
     await request(app)
       .post('/api/transactions/commit')
+      .set(authHeader())
       .send({ accountId: 'nope', rows, resolutions: {} })
       .expect(404);
   });
@@ -428,7 +453,10 @@ describe('POST /api/transactions/:id/split (§8 case 3)', () => {
   });
 
   function split(splits: unknown[]) {
-    return request(app).post(`/api/transactions/${TXN_ID}/split`).send({ splits });
+    return request(app)
+      .post(`/api/transactions/${TXN_ID}/split`)
+      .set(authHeader())
+      .send({ splits });
   }
 
   it('accepts parts that sum exactly to the transaction total', async () => {
@@ -562,7 +590,10 @@ describe('POST /api/transactions/:id/split (§8 case 3)', () => {
 
   it('clears a split on DELETE', async () => {
     db.splitDeleteMany.mockResolvedValue({ count: 3 });
-    const response = await request(app).delete(`/api/transactions/${TXN_ID}/split`).expect(200);
+    const response = await request(app)
+      .delete(`/api/transactions/${TXN_ID}/split`)
+      .set(authHeader())
+      .expect(200);
     expect(response.body).toEqual({ removed: 3 });
   });
 });
@@ -592,7 +623,7 @@ describe('GET /api/review-queue', () => {
   });
 
   it('returns the queue with its counts and the threshold it used', async () => {
-    const response = await request(app).get('/api/review-queue').expect(200);
+    const response = await request(app).get('/api/review-queue').set(authHeader()).expect(200);
 
     expect(response.body.transactions).toHaveLength(1);
     expect(response.body.transactions[0]).toMatchObject({
@@ -605,7 +636,7 @@ describe('GET /api/review-queue', () => {
   });
 
   it('asks for UNCATEGORIZED rows and low-confidence AI answers, and nothing else', async () => {
-    await request(app).get('/api/review-queue').expect(200);
+    await request(app).get('/api/review-queue').set(authHeader()).expect(200);
 
     const where = db.transactionFindMany.mock.calls[0][0].where;
     expect(where.OR).toEqual([
@@ -615,19 +646,22 @@ describe('GET /api/review-queue', () => {
   });
 
   it('never includes a confident rule match', async () => {
-    await request(app).get('/api/review-queue').expect(200);
+    await request(app).get('/api/review-queue').set(authHeader()).expect(200);
 
     const serialized = JSON.stringify(db.transactionFindMany.mock.calls[0][0].where);
     expect(serialized).not.toContain('"RULE"');
   });
 
   it('can be scoped to one account', async () => {
-    await request(app).get(`/api/review-queue?accountId=${ACCOUNT_ID}`).expect(200);
+    await request(app)
+      .get(`/api/review-queue?accountId=${ACCOUNT_ID}`)
+      .set(authHeader())
+      .expect(200);
     expect(db.transactionFindMany.mock.calls[0][0].where.accountId).toBe(ACCOUNT_ID);
   });
 
   it('rejects a nonsense page size', async () => {
-    await request(app).get('/api/review-queue?limit=9999').expect(400);
+    await request(app).get('/api/review-queue?limit=9999').set(authHeader()).expect(400);
   });
 });
 
@@ -656,7 +690,7 @@ describe('POST /api/transactions/:id/category', () => {
   });
 
   function override(body: Record<string, unknown>) {
-    return request(app).post(`/api/transactions/${TXN_ID}/category`).send(body);
+    return request(app).post(`/api/transactions/${TXN_ID}/category`).set(authHeader()).send(body);
   }
 
   it('stores the correction as MANUAL at full confidence', async () => {
@@ -684,14 +718,36 @@ describe('POST /api/transactions/:id/category', () => {
     });
   });
 
-  it('corrects the merchant cache so a stale AI answer cannot contradict the human', async () => {
+  it('does not write one person-s preference into the shared merchant cache', async () => {
+    // MerchantCategoryCache is keyed by merchant alone and read by every user
+    // (PROJECT_CONTEXT.md §7). That is right for a model's opinion about what a
+    // merchant sells and wrong for one person's correction: writing it here
+    // would make Alice's choice Bob's default. The learned rule below already
+    // settles it for this user, because a rule match runs before the LLM path.
+    await override({ category: 'BUSINESS' }).expect(200);
+    expect(db.cacheUpsert).not.toHaveBeenCalled();
+  });
+
+  it('records the override — who, when, from what, to what', async () => {
     await override({ category: 'BUSINESS' }).expect(200);
 
-    expect(db.cacheUpsert.mock.calls[0][0]).toMatchObject({
-      where: { normalizedMerchant: 'WWWSTORE' },
-      create: { normalizedMerchant: 'WWWSTORE', category: 'BUSINESS', confidence: 1 },
-      update: { category: 'BUSINESS', confidence: 1 },
+    expect(db.overrideCreate.mock.calls[0][0]).toMatchObject({
+      data: {
+        userId: 'user_1',
+        transactionId: TXN_ID,
+        merchant: 'WWWSTORE',
+        fromCategory: 'UNCATEGORIZED',
+        toCategory: 'BUSINESS',
+        learnedRule: true,
+      },
     });
+  });
+
+  it('records the override even when the user chose not to teach a rule', async () => {
+    await override({ category: 'BUSINESS', learn: false }).expect(200);
+
+    expect(db.ruleCreate).not.toHaveBeenCalled();
+    expect(db.overrideCreate.mock.calls[0][0].data).toMatchObject({ learnedRule: false });
   });
 
   it('updates the existing rule rather than adding a second one', async () => {

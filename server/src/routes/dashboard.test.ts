@@ -8,18 +8,20 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 const db = vi.hoisted(() => ({
   queryRaw: vi.fn(),
   accountFindUnique: vi.fn(),
+  accountFindFirst: vi.fn(),
   userFindFirst: vi.fn(),
 }));
 
 vi.mock('../db', () => ({
   getPrisma: () => ({
     $queryRaw: db.queryRaw,
-    account: { findUnique: db.accountFindUnique },
+    account: { findUnique: db.accountFindUnique, findFirst: db.accountFindFirst },
     user: { findFirst: db.userFindFirst },
   }),
 }));
 
 import { app } from '../app';
+import { authHeader } from '../test/auth';
 
 const EMPTY_ROW = {
   totals: { spend: '0', income: '0', transactions: '0' },
@@ -39,12 +41,16 @@ beforeEach(() => {
   vi.clearAllMocks();
   db.userFindFirst.mockResolvedValue({ id: 'user_1' });
   db.accountFindUnique.mockResolvedValue({ userId: 'user_1' });
+  db.accountFindFirst.mockResolvedValue({ id: 'acct_1', userId: 'user_1' });
   db.queryRaw.mockResolvedValue([EMPTY_ROW]);
 });
 
 describe('GET /api/dashboard', () => {
   it('resolves a month into a half-open window and the previous calendar month', async () => {
-    const response = await request(app).get('/api/dashboard?month=2026-06').expect(200);
+    const response = await request(app)
+      .get('/api/dashboard?month=2026-06')
+      .set(authHeader())
+      .expect(200);
 
     expect(response.body.range).toMatchObject({
       from: '2026-06-01',
@@ -56,13 +62,14 @@ describe('GET /api/dashboard', () => {
   });
 
   it('makes exactly one aggregation query, not one per card', async () => {
-    await request(app).get('/api/dashboard?month=2026-06').expect(200);
+    await request(app).get('/api/dashboard?month=2026-06').set(authHeader()).expect(200);
     expect(db.queryRaw).toHaveBeenCalledTimes(1);
   });
 
   it('passes filters as bound parameters rather than interpolated SQL', async () => {
     await request(app)
       .get('/api/dashboard?month=2026-06&accountId=acct_1&categories=DINING,GROCERIES')
+      .set(authHeader())
       .expect(200);
 
     const values = queryValues();
@@ -72,29 +79,39 @@ describe('GET /api/dashboard', () => {
   });
 
   it('sends null for an absent filter, so the query can short-circuit it', async () => {
-    await request(app).get('/api/dashboard?month=2026-06').expect(200);
+    await request(app).get('/api/dashboard?month=2026-06').set(authHeader()).expect(200);
     expect(queryValues()).toContain(null);
   });
 
   it('accepts repeated category params as well as a comma-separated list', async () => {
     await request(app)
       .get('/api/dashboard?month=2026-06&categories=DINING&categories=TRAVEL')
+      .set(authHeader())
       .expect(200);
 
     expect(queryValues()).toContainEqual(['DINING', 'TRAVEL']);
   });
 
-  it('scopes to the account owner when an accountId is given', async () => {
-    db.accountFindUnique.mockResolvedValue({ userId: 'user_other' });
-    await request(app).get('/api/dashboard?month=2026-06&accountId=acct_1').expect(200);
+  it('aggregates for the token holder, never for whoever the accountId belongs to', async () => {
+    await request(app)
+      .get('/api/dashboard?month=2026-06&accountId=acct_1')
+      .set(authHeader())
+      .expect(200);
 
-    expect(queryValues()).toContain('user_other');
-    expect(db.userFindFirst).not.toHaveBeenCalled();
+    // Before Phase 9 the accountId decided whose data this was, which is how a
+    // request reached another account by naming it. It is now only a filter,
+    // checked against the caller.
+    expect(queryValues()).toContain('user_1');
+    expect(db.accountFindFirst).toHaveBeenCalledWith({
+      where: { id: 'acct_1', userId: 'user_1' },
+      select: { id: true },
+    });
   });
 
   it('supports a custom range, compared with the preceding window of equal length', async () => {
     const response = await request(app)
       .get('/api/dashboard?from=2026-06-11&to=2026-06-20')
+      .set(authHeader())
       .expect(200);
 
     expect(response.body.range).toMatchObject({
@@ -106,18 +123,24 @@ describe('GET /api/dashboard', () => {
   });
 
   it('switches the time-series bucket for weekly granularity', async () => {
-    await request(app).get('/api/dashboard?month=2026-06&granularity=weekly').expect(200);
+    await request(app)
+      .get('/api/dashboard?month=2026-06&granularity=weekly')
+      .set(authHeader())
+      .expect(200);
     expect(queryValues()).toContain('week');
 
     vi.clearAllMocks();
     db.userFindFirst.mockResolvedValue({ id: 'user_1' });
     db.queryRaw.mockResolvedValue([EMPTY_ROW]);
-    await request(app).get('/api/dashboard?month=2026-06').expect(200);
+    await request(app).get('/api/dashboard?month=2026-06').set(authHeader()).expect(200);
     expect(queryValues()).toContain('day');
   });
 
   it('shapes an empty month into zeroes rather than nulls', async () => {
-    const response = await request(app).get('/api/dashboard?month=2026-06').expect(200);
+    const response = await request(app)
+      .get('/api/dashboard?month=2026-06')
+      .set(authHeader())
+      .expect(200);
 
     expect(response.body.totals).toEqual({ spend: 0, income: 0, net: 0, transactions: 0 });
     expect(response.body.deltas).toEqual({ spend: null, income: null });
@@ -144,7 +167,10 @@ describe('GET /api/dashboard', () => {
       },
     ]);
 
-    const response = await request(app).get('/api/dashboard?month=2026-06').expect(200);
+    const response = await request(app)
+      .get('/api/dashboard?month=2026-06')
+      .set(authHeader())
+      .expect(200);
 
     expect(response.body.totals).toEqual({
       spend: 8959.49,
@@ -169,11 +195,22 @@ describe('GET /api/dashboard', () => {
     ['an unknown granularity', '?month=2026-06&granularity=hourly'],
     ['a half-supplied range', '?from=2026-06-01'],
   ])('rejects %s', async (_label, query) => {
-    await request(app).get(`/api/dashboard${query}`).expect(400);
+    await request(app).get(`/api/dashboard${query}`).set(authHeader()).expect(400);
   });
 
-  it('404s when there is no user to build a dashboard for', async () => {
-    db.userFindFirst.mockResolvedValue(null);
-    await request(app).get('/api/dashboard?month=2026-06').expect(404);
+  it('404s for an account belonging to somebody else', async () => {
+    // findFirst is scoped by userId, so another user's account simply is not
+    // found — the caller cannot tell it from an id that never existed.
+    db.accountFindFirst.mockResolvedValue(null);
+    await request(app)
+      .get('/api/dashboard?month=2026-06&accountId=acct_other')
+      .set(authHeader())
+      .expect(404);
+    expect(db.queryRaw).not.toHaveBeenCalled();
+  });
+
+  it('401s without a token', async () => {
+    await request(app).get('/api/dashboard?month=2026-06').expect(401);
+    expect(db.queryRaw).not.toHaveBeenCalled();
   });
 });

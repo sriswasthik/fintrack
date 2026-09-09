@@ -12,10 +12,11 @@ import type { RequestHandler } from 'express';
 import { z } from 'zod';
 
 import { getPrisma } from '../db';
+import { currentUserId } from '../middleware/auth';
 import { HttpError } from '../middleware/errorHandler';
 import { dismissInsight, listInsights, refreshAnomalies } from '../services/anomalies/apply';
 import { toIsoMonth } from '../services/dashboard/window';
-import { resolveUserId } from './user-scope';
+import { scopeToUser } from './user-scope';
 
 const insightsQuerySchema = z.object({
   month: z
@@ -35,8 +36,7 @@ export const getInsights: RequestHandler = async (req, res) => {
   const month = query.month ?? toIsoMonth(new Date());
 
   const prisma = getPrisma();
-  const userId = await resolveUserId(prisma, query.accountId);
-  if (!userId) throw new HttpError(404, 'No account or user to find insights for');
+  const userId = await scopeToUser(prisma, req, query.accountId);
 
   const summary = await refreshAnomalies(prisma, { userId, month });
   const insights = await listInsights(prisma, { userId, month });
@@ -53,8 +53,7 @@ export const deleteInsight: RequestHandler = async (req, res) => {
   const id = z.string().min(1).parse(req.params.id);
 
   const prisma = getPrisma();
-  const userId = await resolveUserId(prisma);
-  if (!userId) throw new HttpError(404, 'No user to dismiss an insight for');
+  const userId = currentUserId(req);
 
   const dismissed = await dismissInsight(prisma, { id, userId });
   if (!dismissed) throw new HttpError(404, 'No active insight with that id');
