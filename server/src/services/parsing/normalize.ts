@@ -206,8 +206,13 @@ export function normalizeMerchant(raw: string): string {
   let value = raw.toUpperCase();
 
   // 0. Card payments, before any stripping can lose the words that identify one.
+  //    The bank name is normalized on its own and the suffix put back after, so
+  //    the trailing-noise pass cannot eat the word PAYMENT on the way through.
   const cardPayment = CARD_PAYMENT_WRAPPER.exec(value);
-  if (cardPayment) value = `${cardPayment[1].trim()} CARD PAYMENT`;
+  if (cardPayment) {
+    const bank = normalizeMerchant(cardPayment[1].trim());
+    return bank ? `${bank} CARD PAYMENT` : 'CARD PAYMENT';
+  }
 
   // 1. Split on the processor marker and decide which side is the merchant.
   const star = value.indexOf('*');
