@@ -17,7 +17,29 @@ const decode = (token: string) =>
 
 describe('access tokens', () => {
   it('round-trips the user it was signed for', () => {
-    expect(verifyAccessToken(signAccessToken('user_1'))).toBe('user_1');
+    expect(verifyAccessToken(signAccessToken('user_1'))).toEqual({
+      userId: 'user_1',
+      demo: false,
+    });
+  });
+
+  it('carries the demo flag when one was asked for', () => {
+    expect(verifyAccessToken(signAccessToken('user_1', { demo: true }))).toEqual({
+      userId: 'user_1',
+      demo: true,
+    });
+  });
+
+  it('treats anything but an explicit true as a normal session', () => {
+    // Belt and braces: a token cannot be forged, but nor should a strange
+    // value in the claim be a way to fall *out* of the read-only demo.
+    const payload = decode(signAccessToken('user_1'));
+    expect(payload.demo).toBeUndefined();
+  });
+
+  it('honours a longer life for a demo session, which has no refresh cookie', () => {
+    const payload = decode(signAccessToken('user_1', { demo: true, expiresIn: 7200 }));
+    expect((payload.exp as number) - (payload.iat as number)).toBe(7200);
   });
 
   it('is short-lived, so a leaked one stops working quickly', () => {

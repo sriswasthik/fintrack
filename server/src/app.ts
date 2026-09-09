@@ -3,7 +3,7 @@ import cors from 'cors';
 import express from 'express';
 import helmet from 'helmet';
 
-import { authConfigurationHandler, requireAuth } from './middleware/auth';
+import { authConfigurationHandler, requireAuth, requireWritableSession } from './middleware/auth';
 import { errorHandler, notFoundHandler } from './middleware/errorHandler';
 import { accountsRouter } from './routes/accounts';
 import { authRouter } from './routes/auth';
@@ -43,11 +43,15 @@ export function createApp() {
   // Everything below carries data belonging to somebody. `requireAuth` is
   // mounted here, once, rather than per route, so a new route is protected by
   // default and forgetting to add it is not a way to leak an account.
-  app.use('/api', requireAuth, accountsRouter);
-  app.use('/api', requireAuth, dashboardRouter);
-  app.use('/api', requireAuth, insightsRouter);
-  app.use('/api', requireAuth, summaryRouter);
-  app.use('/api', requireAuth, transactionsRouter);
+  // `requireWritableSession` rides alongside it for the same reason: a demo
+  // session is read-only everywhere, including on a route added tomorrow.
+  const session = [requireAuth, requireWritableSession];
+
+  app.use('/api', session, accountsRouter);
+  app.use('/api', session, dashboardRouter);
+  app.use('/api', session, insightsRouter);
+  app.use('/api', session, summaryRouter);
+  app.use('/api', session, transactionsRouter);
 
   app.use(notFoundHandler);
   app.use(authConfigurationHandler);

@@ -9,7 +9,22 @@ describe('GET /api/health', () => {
     const response = await request(app).get('/api/health');
 
     expect(response.status).toBe(200);
-    expect(response.body).toEqual({ status: 'ok' });
+    expect(response.body.status).toBe('ok');
+  });
+
+  it('says whether this deployment offers demo mode', async () => {
+    // The client only shows a "view the demo" button when a server advertises
+    // one, so a private instance never invites a visitor into an account.
+    const off = await request(app).get('/api/health');
+    expect(off.body.demo).toBe(false);
+
+    process.env.DEMO_MODE = 'on';
+    try {
+      const on = await request(app).get('/api/health');
+      expect(on.body.demo).toBe(true);
+    } finally {
+      delete process.env.DEMO_MODE;
+    }
   });
 
   it('returns 404 for unknown API routes, to a caller who is signed in', async () => {
