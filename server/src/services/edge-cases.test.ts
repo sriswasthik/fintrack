@@ -86,12 +86,18 @@ const categoryOf = (transaction: GeneratedTransaction): Category =>
 
 /** Phase 6: every anomaly flag over the whole window. */
 const MONTHS = ['2026-03', '2026-04', '2026-05', '2026-06', '2026-07', '2026-08', '2026-09'];
+/** What each purchase got back, from the links the engine worked out. */
+const REFUNDED = new Map(
+  OUTCOME.refundLinks.map((link) => [link.purchaseId, -ROW.get(link.refundId)!.amount]),
+);
+
 const ANOMALY_ROWS: AnomalyTransaction[] = DATASET.map((t) => ({
   id: String(t.row),
   date: t.date,
   amount: t.amount,
   normalizedMerchant: t.normalizedMerchant,
   category: RESULT.get(String(t.row))!.category,
+  ...(REFUNDED.has(String(t.row)) ? { refunded: REFUNDED.get(String(t.row)) } : {}),
 }));
 const FLAGS = MONTHS.flatMap((month) => detectAnomalies(ANOMALY_ROWS, { month }));
 

@@ -31,6 +31,12 @@ export interface AnomalyTransaction {
   amount: number;
   category: Category;
   normalizedMerchant: string;
+  /**
+   * How much of this charge came back as a linked refund (§8 case 2). A sofa
+   * bought and returned is not an unusual amount of furniture spending — it is
+   * no furniture spending — so outlier detection judges what was kept.
+   */
+  refunded?: number;
 }
 
 export interface DetectedAnomaly {
@@ -176,8 +182,11 @@ const percent = (ratio: number): string => `${Math.round(ratio * 100)}%`;
 /** Spending categories, whatever the sign — a refund nets against its category. */
 const isSpendCategory = (t: AnomalyTransaction): boolean => !NOT_ANALYSED.includes(t.category);
 
+/** What a charge cost after anything returned against it came back. */
+const netAmount = (t: AnomalyTransaction): number => t.amount - (t.refunded ?? 0);
+
 /** An actual charge: money going out, in a category that counts as spending. */
-const isSpend = (t: AnomalyTransaction): boolean => isSpendCategory(t) && t.amount > 0;
+const isSpend = (t: AnomalyTransaction): boolean => isSpendCategory(t) && netAmount(t) > 0;
 
 function severityFrom(ratio: number, medium: number, high: number): AnomalySeverity {
   if (ratio >= high) return 'HIGH';
@@ -221,24 +230,25 @@ export function detectAmountOutliers(
   byCategory.forEach((rows, category) => {
     if (rows.length < config.outlierMinSample) return;
 
-    const amounts = rows.map((t) => t.amount);
+    const amounts = rows.map(netAmount);
     const fence = upperFence(amounts, config.outlierIqrMultiplier);
     if (fence.iqr === 0) return;
 
     rows
       .filter((t) => monthOf(t.date) === config.month)
-      .filter((t) => t.amount > fence.upper && t.amount >= config.outlierMinAmount)
+      .filter((t) => netAmount(t) > fence.upper && netAmount(t) >= config.outlierMinAmount)
       .forEach((t) => {
-        const timesTypical = t.amount / Math.max(fence.q3, 0.01);
+        const amount = netAmount(t);
+        const timesTypical = amount / Math.max(fence.q3, 0.01);
         anomalies.push({
           type: 'UNUSUAL_AMOUNT',
-          severity: severityFrom(t.amount / fence.upper, 1.5, 3),
+          severity: severityFrom(amount / fence.upper, 1.5, 3),
           month: config.month,
           transactionId: t.id,
           explanation:
-            `${money(t.amount)} at ${t.normalizedMerchant} is unusually large for ${category}. ` +
+            `${money(amount)} at ${t.normalizedMerchant} is unusually large for ${category}. ` +
             `Most ${category} charges are under ${money(fence.q3)} ` +
-            `(${timesTypical.toFixed(1)}x that, ${zScore(t.amount, amounts).toFixed(1)} standard deviations above average).`,
+            `(${timesTypical.toFixed(1)}x that, ${zScore(amount, amounts).toFixed(1)} standard deviations above average).`,
           // The category is part of the identity because a split transaction
           // contributes one row per part, each judged against its own category.
           fingerprint: `UNUSUAL_AMOUNT:${t.id}:${category}`,
