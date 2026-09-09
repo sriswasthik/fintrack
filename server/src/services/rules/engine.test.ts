@@ -484,7 +484,10 @@ describe('the built-in rule set', () => {
     expect(matchRule(merchant, ordered)?.category).toBe(expected);
   });
 
-  it.each(['BLUEBIRD BAKERY', 'THE HALL', 'RAMEN TATSU-YA', 'WWWSTORE'])(
+  // Phase 8 added venue and cuisine keywords (BAKERY, RAMEN, ...), which moved
+  // BLUEBIRD BAKERY and RAMEN TATSU-YA out of this list and into DINING. What
+  // is left is genuinely undecidable from the string alone.
+  it.each(['THE HALL', 'WWWSTORE', 'CATERING CO'])(
     'leaves the ambiguous merchant %s for the LLM fallback',
     (merchant) => {
       const ordered = orderRules(
