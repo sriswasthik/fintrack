@@ -1,0 +1,46 @@
+# Render blueprint for the FinTrack API.
+#
+# `render.yaml` in the repo root is what makes this a paste-and-go deploy:
+# point Render at the repository, and it reads the service, the build and the
+# start command from here rather than from a form somebody has to fill in
+# correctly. The values marked `sync: false` are the ones only you can supply.
+#
+# The client is a static build deployed separately (see vercel.json /
+# netlify.toml) — two services, two URLs, joined by CORS_ORIGIN and
+# VITE_API_BASE_URL pointing at each other.
+
+services:
+  - type: web
+    name: fintrack-api
+    runtime: node
+    plan: starter # A free instance sleeps, and a cold Prisma boot is slow.
+    region: oregon
+    healthCheckPath: /api/health
+
+    # Installs both workspaces from the root lockfile, generates Prisma Client
+    # (it is generated code and deliberately not committed), then compiles.
+    buildCommand: npm ci && npm run db:generate --workspace server && npm run build --workspace server
+
+    # Migrations run here rather than in the build so they happen once per
+    # deploy against the live database, and a failed migration fails the deploy
+    # instead of leaving a half-migrated schema behind a running server.
+    preDeployCommand: npm run db:deploy --workspace server
+
+    startCommand: npm run start --workspace server
+
+    envVars:
+      - key: NODE_ENV
+        value: production
+      # Render supplies PORT; server/src/index.ts reads it.
+      - key: DATABASE_URL
+        sync: false # Neon/Supabase pooled connection string.
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: CORS_ORIGIN
+        sync: false # The deployed client's origin, e.g. https://fintrack.vercel.app
+      - key: JWT_ACCESS_SECRET
+        generateValue: true # 256-bit value generated once by Render.
+      - key: JWT_REFRESH_SECRET
+        generateValue: true
+      - key: DEMO_MODE
+        value: "on"
