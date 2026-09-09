@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { Link } from 'react-router-dom';
 
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -20,6 +21,7 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { SplitDialog } from '@/components/SplitDialog';
+import { EmptyState, ErrorState, Loading } from '@/components/states';
 import { fetchAccounts, fetchTransactions, type Transaction } from '@/lib/transactions';
 
 const PAGE_SIZE = 50;
@@ -46,6 +48,8 @@ export function TransactionsPage() {
   });
 
   const page = transactions.data;
+  const rows = page?.transactions ?? [];
+  const filtered = accountId !== 'all';
 
   return (
     <main className="mx-auto flex max-w-5xl flex-col gap-6 p-6">
@@ -101,7 +105,7 @@ export function TransactionsPage() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {(page?.transactions ?? []).map((transaction) => (
+              {rows.map((transaction) => (
                 <TableRow key={transaction.id}>
                   <TableCell className="whitespace-nowrap">{transaction.date}</TableCell>
                   <TableCell className="max-w-[18rem] truncate font-mono text-xs">
@@ -134,6 +138,28 @@ export function TransactionsPage() {
               ))}
             </TableBody>
           </Table>
+
+          {transactions.isPending && <Loading label="Loading transactions…" />}
+
+          {transactions.isError && (
+            <ErrorState error={transactions.error} onRetry={() => void transactions.refetch()} />
+          )}
+
+          {!transactions.isPending && !transactions.isError && rows.length === 0 && (
+            <EmptyState
+              title={filtered ? 'Nothing in this account yet' : 'No transactions yet'}
+              description={
+                filtered
+                  ? 'Try another account, or import a statement into this one.'
+                  : 'Import a bank export and everything you spend will show up here.'
+              }
+              action={
+                <Button asChild size="sm">
+                  <Link to="/upload">Import a statement</Link>
+                </Button>
+              }
+            />
+          )}
 
           {page && page.total > PAGE_SIZE && (
             <div className="flex items-center gap-3 border-t pt-4">

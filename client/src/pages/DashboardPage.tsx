@@ -1,9 +1,11 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import { Link } from 'react-router-dom';
 
 import { CategoryDonut } from '@/components/dashboard/CategoryDonut';
 import { CategoryDrilldown } from '@/components/dashboard/CategoryDrilldown';
 import { InsightsPanel } from '@/components/dashboard/InsightsPanel';
+import { EmptyState, ErrorState, Loading } from '@/components/states';
 import { SpendOverTime } from '@/components/dashboard/SpendOverTime';
 import { StatTile } from '@/components/dashboard/StatTile';
 import { Button } from '@/components/ui/button';
@@ -38,14 +40,6 @@ function monthLabel(month: string): string {
     year: 'numeric',
     timeZone: 'UTC',
   });
-}
-
-function errorMessage(error: unknown): string {
-  if (typeof error === 'object' && error !== null && 'response' in error) {
-    const data = (error as { response?: { data?: { error?: string } } }).response?.data;
-    if (data?.error) return data.error;
-  }
-  return error instanceof Error ? error.message : 'Something went wrong';
 }
 
 export function DashboardPage() {
@@ -169,157 +163,185 @@ export function DashboardPage() {
       </div>
 
       {dashboard.isError && (
-        <p role="alert" className="text-destructive text-sm">
-          {errorMessage(dashboard.error)}
-        </p>
+        <ErrorState error={dashboard.error} onRetry={() => void dashboard.refetch()} />
       )}
 
-      <section className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
-        <StatTile
-          label="Spend"
-          value={data ? money(data.totals.spend) : '—'}
-          delta={data?.deltas.spend}
-          hint={data ? `vs ${compactMoney(data.previous.spend)}` : undefined}
-        />
-        <StatTile
-          label="Income"
-          value={data ? money(data.totals.income) : '—'}
-          delta={data?.deltas.income}
-          riseIsGood
-          hint={data ? `vs ${compactMoney(data.previous.income)}` : undefined}
-        />
-        <StatTile
-          label="Net"
-          value={data ? money(data.totals.net) : '—'}
-          hint="income minus spend"
-        />
-        <StatTile
-          label="Transactions"
-          value={data ? String(data.totals.transactions) : '—'}
-          hint={data ? `${data.previous.transactions} last period` : undefined}
-        />
-      </section>
+      {dashboard.isPending && <Loading label="Adding up your month…" />}
 
-      {/* Above the charts: an unexpected charge is the one thing on this page a
+      {data && data.totals.transactions === 0 && (
+        <EmptyState
+          title="Nothing in this month"
+          description={
+            months.length === 0
+              ? 'Import a bank export and this is where the numbers land.'
+              : 'Try another month, or clear the filters above.'
+          }
+          action={
+            months.length === 0 ? (
+              <Button asChild size="sm">
+                <Link to="/upload">Import a statement</Link>
+              </Button>
+            ) : undefined
+          }
+        />
+      )}
+
+      {data && data.totals.transactions > 0 && (
+        <>
+          <section className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
+            <StatTile
+              label="Spend"
+              value={data ? money(data.totals.spend) : '—'}
+              delta={data?.deltas.spend}
+              hint={data ? `vs ${compactMoney(data.previous.spend)}` : undefined}
+            />
+            <StatTile
+              label="Income"
+              value={data ? money(data.totals.income) : '—'}
+              delta={data?.deltas.income}
+              riseIsGood
+              hint={data ? `vs ${compactMoney(data.previous.income)}` : undefined}
+            />
+            <StatTile
+              label="Net"
+              value={data ? money(data.totals.net) : '—'}
+              hint="income minus spend"
+            />
+            <StatTile
+              label="Transactions"
+              value={data ? String(data.totals.transactions) : '—'}
+              hint={data ? `${data.previous.transactions} last period` : undefined}
+            />
+          </section>
+
+          {/* Above the charts: an unexpected charge is the one thing on this page a
           person might need to act on today. */}
-      <InsightsPanel
-        month={currentMonth ?? undefined}
-        accountId={accountId === 'all' ? undefined : accountId}
-      />
+          <InsightsPanel
+            month={currentMonth ?? undefined}
+            accountId={accountId === 'all' ? undefined : accountId}
+          />
 
-      <section className="grid gap-4 lg:grid-cols-5">
-        <Card className="min-w-0 lg:col-span-2">
-          <CardHeader>
-            <CardTitle>Where it went</CardTitle>
-            <CardDescription>
-              Transfers excluded; refunds netted against what they returned.
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            {data && <CategoryDonut byCategory={data.byCategory} onSelect={setDrilldown} />}
-          </CardContent>
-        </Card>
+          <section className="grid gap-4 lg:grid-cols-5">
+            <Card className="min-w-0 lg:col-span-2">
+              <CardHeader>
+                <CardTitle>Where it went</CardTitle>
+                <CardDescription>
+                  Transfers excluded; refunds netted against what they returned.
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                {data && <CategoryDonut byCategory={data.byCategory} onSelect={setDrilldown} />}
+              </CardContent>
+            </Card>
 
-        <Card className="min-w-0 lg:col-span-3">
-          <CardHeader className="flex-row items-start justify-between gap-4">
-            <div className="space-y-1.5">
-              <CardTitle>Spend over time</CardTitle>
-              <CardDescription>
-                {data ? `${data.range.from} to ${data.range.to}` : ' '}
-              </CardDescription>
-            </div>
-            <Tabs value={granularity} onValueChange={(v) => setGranularity(v as Granularity)}>
-              <TabsList>
-                <TabsTrigger value="daily">Daily</TabsTrigger>
-                <TabsTrigger value="weekly">Weekly</TabsTrigger>
-              </TabsList>
-            </Tabs>
-          </CardHeader>
-          <CardContent>
-            {data && <SpendOverTime series={data.series} granularity={data.range.granularity} />}
-          </CardContent>
-        </Card>
-      </section>
+            <Card className="min-w-0 lg:col-span-3">
+              <CardHeader className="flex-row items-start justify-between gap-4">
+                <div className="space-y-1.5">
+                  <CardTitle>Spend over time</CardTitle>
+                  <CardDescription>
+                    {data ? `${data.range.from} to ${data.range.to}` : ' '}
+                  </CardDescription>
+                </div>
+                <Tabs value={granularity} onValueChange={(v) => setGranularity(v as Granularity)}>
+                  <TabsList>
+                    <TabsTrigger value="daily">Daily</TabsTrigger>
+                    <TabsTrigger value="weekly">Weekly</TabsTrigger>
+                  </TabsList>
+                </Tabs>
+              </CardHeader>
+              <CardContent>
+                {data && (
+                  <SpendOverTime series={data.series} granularity={data.range.granularity} />
+                )}
+              </CardContent>
+            </Card>
+          </section>
 
-      <section className="grid gap-4 lg:grid-cols-2">
-        <Card className="min-w-0">
-          <CardHeader>
-            <CardTitle>Top merchants</CardTitle>
-            <CardDescription>By spend in this period</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Merchant</TableHead>
-                  <TableHead className="text-right">Spend</TableHead>
-                  <TableHead className="text-right">Txns</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {(data?.topMerchants ?? []).map((merchant) => (
-                  <TableRow key={merchant.merchant}>
-                    <TableCell className="max-w-[14rem] truncate">{merchant.merchant}</TableCell>
-                    <TableCell className="text-right tabular-nums">
-                      {money(merchant.amount)}
-                    </TableCell>
-                    <TableCell className="text-muted-foreground text-right tabular-nums">
-                      {merchant.transactions}
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </CardContent>
-        </Card>
+          <section className="grid gap-4 lg:grid-cols-2">
+            <Card className="min-w-0">
+              <CardHeader>
+                <CardTitle>Top merchants</CardTitle>
+                <CardDescription>By spend in this period</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Merchant</TableHead>
+                      <TableHead className="text-right">Spend</TableHead>
+                      <TableHead className="text-right">Txns</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {(data?.topMerchants ?? []).map((merchant) => (
+                      <TableRow key={merchant.merchant}>
+                        <TableCell className="max-w-[14rem] truncate">
+                          {merchant.merchant}
+                        </TableCell>
+                        <TableCell className="text-right tabular-nums">
+                          {money(merchant.amount)}
+                        </TableCell>
+                        <TableCell className="text-muted-foreground text-right tabular-nums">
+                          {merchant.transactions}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </CardContent>
+            </Card>
 
-        {/* The table view the donut's low-contrast slots require: every category,
+            {/* The table view the donut's low-contrast slots require: every category,
             at full precision, not just the six that fit in the ring. */}
-        <Card className="min-w-0">
-          <CardHeader>
-            <CardTitle>By category</CardTitle>
-            <CardDescription>Select a row to see the transactions behind it</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Category</TableHead>
-                  <TableHead className="text-right">Amount</TableHead>
-                  <TableHead className="text-right">Share</TableHead>
-                  <TableHead className="text-right">Txns</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {(data?.byCategory ?? []).map((row) => (
-                  <TableRow
-                    key={row.category}
-                    className="cursor-pointer"
-                    onClick={() => setDrilldown(row.category)}
-                  >
-                    <TableCell>
-                      <button
-                        type="button"
-                        className="hover:underline"
-                        aria-label={`Show ${row.category} transactions`}
+            <Card className="min-w-0">
+              <CardHeader>
+                <CardTitle>By category</CardTitle>
+                <CardDescription>Select a row to see the transactions behind it</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Category</TableHead>
+                      <TableHead className="text-right">Amount</TableHead>
+                      <TableHead className="text-right">Share</TableHead>
+                      <TableHead className="text-right">Txns</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {(data?.byCategory ?? []).map((row) => (
+                      <TableRow
+                        key={row.category}
+                        className="cursor-pointer"
+                        onClick={() => setDrilldown(row.category)}
                       >
-                        {row.category.replace(/_/g, ' ')}
-                      </button>
-                    </TableCell>
-                    <TableCell className="text-right tabular-nums">{money(row.amount)}</TableCell>
-                    <TableCell className="text-muted-foreground text-right tabular-nums">
-                      {row.share > 0 ? `${row.share}%` : '—'}
-                    </TableCell>
-                    <TableCell className="text-muted-foreground text-right tabular-nums">
-                      {row.transactions}
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </CardContent>
-        </Card>
-      </section>
+                        <TableCell>
+                          <button
+                            type="button"
+                            className="hover:underline"
+                            aria-label={`Show ${row.category} transactions`}
+                          >
+                            {row.category.replace(/_/g, ' ')}
+                          </button>
+                        </TableCell>
+                        <TableCell className="text-right tabular-nums">
+                          {money(row.amount)}
+                        </TableCell>
+                        <TableCell className="text-muted-foreground text-right tabular-nums">
+                          {row.share > 0 ? `${row.share}%` : '—'}
+                        </TableCell>
+                        <TableCell className="text-muted-foreground text-right tabular-nums">
+                          {row.transactions}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </CardContent>
+            </Card>
+          </section>
+        </>
+      )}
 
       <CategoryDrilldown
         category={drilldown}
