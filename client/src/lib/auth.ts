@@ -12,6 +12,8 @@ export interface Session {
   accessToken: string;
   expiresIn: number;
   user: AuthUser;
+  /** True for the shared read-only sample account. */
+  demo?: boolean;
 }
 
 export interface Credentials {
@@ -45,6 +47,18 @@ export async function register(body: Registration): Promise<Session> {
 
 export async function login(body: Credentials): Promise<Session> {
   const { data } = await authApi.post<Session>('/api/auth/login', body);
+  return data;
+}
+
+/**
+ * Starts a read-only session on the shared sample account.
+ *
+ * Unlike a real session this one has no refresh cookie behind it, so when it
+ * expires the way to renew it is to ask for another — which is what the
+ * context installs as the recovery hook while a demo is running.
+ */
+export async function startDemo(): Promise<Session> {
+  const { data } = await authApi.post<Session>('/api/auth/demo', {});
   return data;
 }
 

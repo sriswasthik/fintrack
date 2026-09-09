@@ -1,3 +1,4 @@
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
@@ -7,6 +8,9 @@ import { LoginPage, RegisterPage } from '@/pages/AuthPage';
 import { useAuth } from '@/context/auth-context';
 
 vi.mock('@/context/auth-context', () => ({ useAuth: vi.fn() }));
+// The demo button asks /api/health whether a demo is on offer. These tests are
+// about the credentials form, so it is told there is none and renders nothing.
+vi.mock('@/lib/health', () => ({ fetchHealth: vi.fn().mockResolvedValue({ status: 'ok' }) }));
 const useAuthMock = vi.mocked(useAuth);
 
 const signIn = vi.fn();
@@ -15,22 +19,29 @@ const signUp = vi.fn();
 const session = (over: Partial<ReturnType<typeof useAuth>> = {}) => ({
   user: null,
   isRestoring: false,
+  isDemo: false,
   signIn,
   signUp,
+  startDemo: vi.fn(),
   signOut: vi.fn(),
   ...over,
 });
 
 function renderAuth(page: 'login' | 'register', entry = `/${page}`, state: unknown = undefined) {
+  // The real app renders these inside a QueryClientProvider; the demo button
+  // asks the server whether a demo is on offer.
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   render(
-    <MemoryRouter initialEntries={[{ pathname: entry, state }]}>
-      <Routes>
-        <Route path="/login" element={<LoginPage />} />
-        <Route path="/register" element={<RegisterPage />} />
-        <Route path="/dashboard" element={<p>the dashboard</p>} />
-        <Route path="/summary" element={<p>the summary</p>} />
-      </Routes>
-    </MemoryRouter>,
+    <QueryClientProvider client={queryClient}>
+      <MemoryRouter initialEntries={[{ pathname: entry, state }]}>
+        <Routes>
+          <Route path="/login" element={<LoginPage />} />
+          <Route path="/register" element={<RegisterPage />} />
+          <Route path="/dashboard" element={<p>the dashboard</p>} />
+          <Route path="/summary" element={<p>the summary</p>} />
+        </Routes>
+      </MemoryRouter>
+    </QueryClientProvider>,
   );
 }
 

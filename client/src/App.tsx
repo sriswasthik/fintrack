@@ -1,5 +1,6 @@
 import { Link, NavLink, Route, Routes } from 'react-router-dom';
 
+import { DemoBanner } from '@/components/DemoBanner';
 import { ProtectedRoute } from '@/components/ProtectedRoute';
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/context/auth-context';
@@ -11,16 +12,21 @@ import { SummaryPage } from '@/pages/SummaryPage';
 import { TransactionsPage } from '@/pages/TransactionsPage';
 import { UploadPage } from '@/pages/UploadPage';
 
+/**
+ * `writes: true` marks a page whose whole purpose is to change something. A
+ * demo session is refused those by the server, so offering them would be
+ * offering a 403.
+ */
 const NAV = [
   { to: '/dashboard', label: 'Dashboard' },
-  { to: '/upload', label: 'Import' },
+  { to: '/upload', label: 'Import', writes: true },
   { to: '/transactions', label: 'Transactions' },
   { to: '/summary', label: 'Summary' },
-  { to: '/review', label: 'Review' },
+  { to: '/review', label: 'Review', writes: true },
 ];
 
 function Nav() {
-  const { user, isRestoring, signOut } = useAuth();
+  const { user, isRestoring, isDemo, signOut } = useAuth();
 
   return (
     <nav className="border-b">
@@ -32,7 +38,7 @@ function Nav() {
         {/* The app's pages are only reachable with a session, so offering them
             to a signed-out visitor would just be a list of redirects. */}
         {user &&
-          NAV.map((item) => (
+          NAV.filter((item) => !(isDemo && item.writes)).map((item) => (
             <NavLink
               key={item.to}
               to={item.to}
@@ -47,9 +53,11 @@ function Nav() {
         <div className="ml-auto flex items-center gap-3">
           {user ? (
             <>
-              <span className="text-muted-foreground hidden sm:inline">{user.email}</span>
+              <span className="text-muted-foreground hidden sm:inline">
+                {isDemo ? 'Sample account' : user.email}
+              </span>
               <Button variant="ghost" size="sm" onClick={() => void signOut()}>
-                Sign out
+                {isDemo ? 'Leave demo' : 'Sign out'}
               </Button>
             </>
           ) : (
@@ -70,22 +78,25 @@ function Nav() {
   );
 }
 
-const protect = (element: React.ReactNode) => <ProtectedRoute>{element}</ProtectedRoute>;
+const protect = (element: React.ReactNode, writes = false) => (
+  <ProtectedRoute writes={writes}>{element}</ProtectedRoute>
+);
 
 export function App() {
   return (
     <div className="min-h-svh">
       <Nav />
+      <DemoBanner />
       <Routes>
         <Route path="/" element={<HomePage />} />
         <Route path="/login" element={<LoginPage />} />
         <Route path="/register" element={<RegisterPage />} />
 
         <Route path="/dashboard" element={protect(<DashboardPage />)} />
-        <Route path="/upload" element={protect(<UploadPage />)} />
+        <Route path="/upload" element={protect(<UploadPage />, true)} />
         <Route path="/transactions" element={protect(<TransactionsPage />)} />
         <Route path="/summary" element={protect(<SummaryPage />)} />
-        <Route path="/review" element={protect(<ReviewPage />)} />
+        <Route path="/review" element={protect(<ReviewPage />, true)} />
       </Routes>
     </div>
   );

@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from 'react';
 import { Link, Navigate, useLocation, useNavigate } from 'react-router-dom';
 
+import { DemoButton } from '@/components/DemoButton';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -164,6 +165,11 @@ export function AuthPage({ mode }: { mode: 'login' | 'register' }) {
               {copy.switchLabel}
             </Link>
           </p>
+
+          {/* Renders nothing unless the server offers demo mode. */}
+          <div className="mt-4 border-t pt-4">
+            <DemoButton />
+          </div>
         </CardContent>
       </Card>
     </main>

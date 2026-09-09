@@ -6,8 +6,15 @@ export interface AuthState {
   user: AuthUser | null;
   /** True until the first refresh attempt settles, so routes can wait. */
   isRestoring: boolean;
+  /**
+   * True while viewing the shared sample account. The server refuses writes
+   * from this session; the UI hides them so nobody is offered a button that
+   * only produces a 403.
+   */
+  isDemo: boolean;
   signIn: (credentials: Credentials) => Promise<void>;
   signUp: (registration: Registration) => Promise<void>;
+  startDemo: () => Promise<void>;
   signOut: () => Promise<void>;
 }
 

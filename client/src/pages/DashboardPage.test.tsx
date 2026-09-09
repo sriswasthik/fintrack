@@ -8,6 +8,21 @@ import { DashboardPage } from '@/pages/DashboardPage';
 import { fetchDashboard, type Dashboard } from '@/lib/dashboard';
 import { fetchAccounts, fetchTransactions } from '@/lib/transactions';
 
+// This component adapts to a read-only demo session; these tests are about a
+// normal one. (The demo behaviour has its own tests.)
+vi.mock('@/context/auth-context', () => ({
+  useAuth: () => ({
+    user: { id: 'user_1', email: 'alice@example.test', name: 'Alice' },
+    isRestoring: false,
+    isDemo: false,
+    signIn: vi.fn(),
+    signUp: vi.fn(),
+    startDemo: vi.fn(),
+    signOut: vi.fn(),
+  }),
+}));
+
+
 // Recharts measures its container, which jsdom cannot do, so the two chart
 // components are stubbed. Their own logic is covered by slices.test.ts.
 vi.mock('@/components/dashboard/CategoryDonut', () => ({

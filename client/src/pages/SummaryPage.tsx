@@ -4,6 +4,7 @@ import { useSearchParams } from 'react-router-dom';
 
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { useAuth } from '@/context/auth-context';
 import {
   Table,
   TableBody,
@@ -167,6 +168,7 @@ function Notice({ summary }: { summary: MonthlySummary }) {
 
 export function SummaryPage() {
   const [params, setParams] = useSearchParams();
+  const { isDemo } = useAuth();
   const [regenerateError, setRegenerateError] = useState<unknown>(null);
   const queryClient = useQueryClient();
 
@@ -217,13 +219,17 @@ export function SummaryPage() {
           >
             ›
           </Button>
-          <Button
-            variant="outline"
-            disabled={regenerate.isPending || summary.isPending}
-            onClick={() => regenerate.mutate()}
-          >
-            {regenerate.isPending ? 'Writing…' : 'Regenerate'}
-          </Button>
+          {/* Regenerating writes, and costs a model call. The demo account is
+              shared, so its summaries are written once at deploy time. */}
+          {!isDemo && (
+            <Button
+              variant="outline"
+              disabled={regenerate.isPending || summary.isPending}
+              onClick={() => regenerate.mutate()}
+            >
+              {regenerate.isPending ? 'Writing…' : 'Regenerate'}
+            </Button>
+          )}
         </div>
       </header>
 
