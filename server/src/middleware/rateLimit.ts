@@ -20,7 +20,11 @@ function keyBy(req: Request): string {
   return req.userId ?? ipKeyGenerator(req.ip ?? '');
 }
 
-function limiter(max: number, message: string): ReturnType<typeof rateLimit> {
+function limiter(
+  max: number,
+  message: string,
+  extra: Partial<Options> = {},
+): ReturnType<typeof rateLimit> {
   const options: Partial<Options> = {
     windowMs: WINDOW_MS,
     limit: max,
@@ -30,6 +34,7 @@ function limiter(max: number, message: string): ReturnType<typeof rateLimit> {
     message: { error: message },
     // Tests and scripts drive these routes hard on purpose.
     skip: () => process.env.NODE_ENV === 'test',
+    ...extra,
   };
   return rateLimit(options);
 }
@@ -49,8 +54,16 @@ export const summaryLimiter = limiter(
   'Too many summary requests. Wait a few minutes and try again.',
 );
 
-/** Guessing passwords should be slow, and enumerating accounts slower. */
+/**
+ * Guessing passwords should be slow, and enumerating accounts slower.
+ *
+ * Only *failed* attempts count. What needs throttling is guessing, and an
+ * office behind one address should not lock itself out because thirty people
+ * signed in on Monday morning — which is what counting successes would do,
+ * since the key for an unauthenticated request is the shared IP.
+ */
 export const authLimiter = limiter(
   20,
-  'Too many authentication attempts. Wait a few minutes and try again.',
+  'Too many failed attempts. Wait a few minutes and try again.',
+  { skipSuccessfulRequests: true },
 );
