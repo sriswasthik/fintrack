@@ -87,6 +87,7 @@ model User {
   refreshTokens    RefreshToken[]
   anomalyFlags     AnomalyFlag[]
   monthlySummaries MonthlySummary[]
+  categoryOverrides CategoryOverride[]
 }
 
 /// Long-lived refresh tokens, stored hashed. Issued in Phase 9.
@@ -172,6 +173,7 @@ model Transaction {
 
   splits       Split[]
   anomalyFlags AnomalyFlag[]
+  overrides    CategoryOverride[]
 
   @@index([accountId, date])
   @@index([normalizedMerchant])
@@ -197,6 +199,35 @@ model Split {
 
 /// Deterministic categorization rules. A null `userId` is a built-in rule that
 /// applies to everyone; a non-null one was learned from that user's override.
+/// Every time a person overrides a category, recorded before the change is made.
+///
+/// The rule engine and the LLM both write categories; a person writing one is
+/// the only signal that says the automatic answer was wrong. Keeping the old
+/// value alongside the new one is what makes that measurable — "how often is
+/// the engine corrected, and on what" is a question about this table.
+model CategoryOverride {
+  id     String @id @default(cuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  transactionId String
+  transaction   Transaction @relation(fields: [transactionId], references: [id], onDelete: Cascade)
+
+  /// The merchant key at the time of the override, so the record survives a
+  /// later re-normalization of the transaction.
+  merchant String
+
+  fromCategory Category
+  toCategory   Category
+  /// Whether the correction also taught a rule for the merchant.
+  learnedRule  Boolean @default(false)
+
+  createdAt DateTime @default(now())
+
+  @@index([userId, createdAt])
+  @@index([transactionId])
+}
+
 model Rule {
   id     String  @id @default(cuid())
   userId String?
