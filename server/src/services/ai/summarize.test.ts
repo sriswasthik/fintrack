@@ -42,12 +42,12 @@ const JUNE: MonthlyStats = {
     { category: 'SHOPPING', amount: 1945.84, previousAmount: 4917.4, change: -60.4, share: 21.7 },
     { category: 'TRAVEL', amount: 1052.14, previousAmount: 1371.73, change: -23.3, share: 11.7 },
   ],
-  topMerchant: { merchant: 'OAKWOOD PROPERTY MGMT', amount: 2150, transactions: 1 },
+  topMerchant: { merchant: 'PRESTIGE PROPERTY MGMT', amount: 2150, transactions: 1 },
   anomalies: [
     {
       type: 'SUBSCRIPTION_PRICE_INCREASE',
       severity: 'MEDIUM',
-      explanation: 'NETFLIX went up from $15.49 to $17.99 (+16%, $2.50 more a month).',
+      explanation: 'NETFLIX went up from ₹499.00 to ₹649.00 (+30%, ₹150.00 more a month).',
     },
   ],
 };
@@ -56,10 +56,10 @@ const JUNE: MonthlyStats = {
 const filler = (words: number) => ' word'.repeat(words).trim();
 
 const goodSummary = (extra = '') =>
-  `June was a calmer month. You spent $8,959.49 against income of $10,926.72, ` +
+  `June was a calmer month. You spent ₹8,959.49 against income of ₹10,926.72, ` +
   `which works out to a savings rate of 18%. Spending fell 32.6% from May. ` +
-  `Housing held steady at $2,150.00, shopping dropped 60.4% to $1,945.84, and ` +
-  `travel came to $1,052.14. Worth a look: NETFLIX went up from $15.49 to $17.99. ` +
+  `Housing held steady at ₹2,150.00, shopping dropped 60.4% to ₹1,945.84, and ` +
+  `travel came to ₹1,052.14. Worth a look: NETFLIX went up from ₹499.00 to ₹649.00. ` +
   extra +
   filler(ACCEPTED_WORDS.min);
 
@@ -69,7 +69,7 @@ const goodSummary = (extra = '') =>
 
 describe('moneyFigures', () => {
   it('pulls out amounts however they are punctuated', () => {
-    expect(moneyFigures('$8,959.49 and $12 and $1,000 and $0.50')).toEqual([
+    expect(moneyFigures('₹8,959.49 and ₹12 and ₹1,000 and ₹0.50')).toEqual([
       8959.49, 12, 1000, 0.5,
     ]);
   });
@@ -82,7 +82,7 @@ describe('moneyFigures', () => {
 describe('permittedMoney', () => {
   it('includes the figures quoted inside an anomaly explanation', () => {
     // The model is asked to mention anomalies, which quote their own amounts.
-    expect(permittedMoney(JUNE)).toEqual(expect.arrayContaining([15.49, 17.99, 2.5]));
+    expect(permittedMoney(JUNE)).toEqual(expect.arrayContaining([499, 649, 150]));
   });
 
   it('includes month-over-month differences, which are arithmetic on our own numbers', () => {
@@ -102,11 +102,11 @@ describe('checkFigures', () => {
   });
 
   it('rejects a number the model made up', () => {
-    const invented = goodSummary('Your dining bill of $612.40 was the surprise. ');
+    const invented = goodSummary('Your dining bill of ₹612.40 was the surprise. ');
     const check = checkFigures(invented, JUNE);
 
     expect(check.ok).toBe(false);
-    expect(check.problems.join(' ')).toContain('$612.40 is not one of the figures');
+    expect(check.problems.join(' ')).toContain('₹612.40 is not one of the figures');
   });
 
   it('rejects an invented percentage just as firmly', () => {
@@ -121,23 +121,23 @@ describe('checkFigures', () => {
     const check = checkFigures(vague, JUNE);
 
     expect(check.ok).toBe(false);
-    expect(check.problems.join(' ')).toContain('$8,959.49');
-    expect(check.problems.join(' ')).toContain('$10,926.72');
+    expect(check.problems.join(' ')).toContain('₹8,959.49');
+    expect(check.problems.join(' ')).toContain('₹10,926.72');
     expect(check.problems.join(' ')).toContain('18%');
   });
 
-  it('allows a figure rounded to the dollar, which is a reading choice not an invention', () => {
-    const rounded = goodSummary().replace('$8,959.49', '$8,959');
+  it('allows a figure rounded to the rupee, which is a reading choice not an invention', () => {
+    const rounded = goodSummary().replace('₹8,959.49', '₹8,959');
     expect(checkFigures(rounded, JUNE).ok).toBe(true);
   });
 
   it('does not allow rounding that changes the number', () => {
-    const wrong = goodSummary().replace('$8,959.49', '$9,000');
+    const wrong = goodSummary().replace('₹8,959.49', '₹9,000');
     expect(checkFigures(wrong, JUNE).ok).toBe(false);
   });
 
   it('rejects a one-liner and an essay alike', () => {
-    const short = 'You spent $8,959.49, earned $10,926.72, and saved 18%.';
+    const short = 'You spent ₹8,959.49, earned ₹10,926.72, and saved 18%.';
     expect(checkFigures(short, JUNE).problems.join(' ')).toContain('Too short');
 
     const long = goodSummary() + filler(ACCEPTED_WORDS.max);
@@ -145,13 +145,13 @@ describe('checkFigures', () => {
   });
 
   it('does not repeat the same complaint once per offending figure', () => {
-    const check = checkFigures(goodSummary('Also $612.40 and $612.40 and $612.40. '), JUNE);
-    expect(check.problems.filter((p) => p.includes('$612.40'))).toHaveLength(1);
+    const check = checkFigures(goodSummary('Also ₹612.40 and ₹612.40 and ₹612.40. '), JUNE);
+    expect(check.problems.filter((p) => p.includes('₹612.40'))).toHaveLength(1);
   });
 
   it('does not ask for a savings rate when there was no income to save from', () => {
     const noIncome: MonthlyStats = { ...JUNE, income: 0, savingsRate: null };
-    const text = `You spent $8,959.49 this month against income of $0.00. ${filler(ACCEPTED_WORDS.min)}`;
+    const text = `You spent ₹8,959.49 this month against income of ₹0.00. ${filler(ACCEPTED_WORDS.min)}`;
     expect(checkFigures(text, noIncome).ok).toBe(true);
   });
 });
@@ -163,8 +163,8 @@ describe('checkFigures', () => {
 describe('the prompt', () => {
   it('gives the model the figures in the exact form the check looks for', () => {
     const crib = figureCrib(JUNE);
-    expect(crib).toContain('total spend: $8,959.49');
-    expect(crib).toContain('total income: $10,926.72');
+    expect(crib).toContain('total spend: ₹8,959.49');
+    expect(crib).toContain('total income: ₹10,926.72');
     expect(crib).toContain('savings rate: 18%');
   });
 
@@ -182,9 +182,9 @@ describe('the prompt', () => {
 
   it('tells the model exactly what was wrong when it is asked to try again', () => {
     const correction = buildCorrectionMessage([
-      '$612.40 is not one of the figures you were given.',
+      '₹612.40 is not one of the figures you were given.',
     ]);
-    expect(correction).toContain('$612.40');
+    expect(correction).toContain('₹612.40');
     expect(correction).toContain('Rewrite the whole recap');
   });
 });
@@ -196,10 +196,10 @@ describe('the prompt', () => {
 describe('renderFallback', () => {
   it('states the figures without pretending to be prose about them', () => {
     const text = renderFallback(JUNE);
-    expect(text).toContain('$8,959.49');
-    expect(text).toContain('$10,926.72');
+    expect(text).toContain('₹8,959.49');
+    expect(text).toContain('₹10,926.72');
     expect(text).toContain('18%');
-    expect(text).toContain('OAKWOOD PROPERTY MGMT');
+    expect(text).toContain('PRESTIGE PROPERTY MGMT');
     expect(text).toContain('NETFLIX went up');
   });
 
@@ -240,7 +240,7 @@ describe('AnthropicMonthlySummarizer', () => {
 
     expect(create).toHaveBeenCalledTimes(1);
     expect(result).toMatchObject({ source: 'model', calls: 1, rejections: [] });
-    expect(result.content).toContain('$8,959.49');
+    expect(result.content).toContain('₹8,959.49');
   });
 
   it('sends the stats and caches the system prompt', async () => {
@@ -255,7 +255,7 @@ describe('AnthropicMonthlySummarizer', () => {
   });
 
   it('retries once, showing the model its own draft and what was wrong with it', async () => {
-    const bad = goodSummary('Dining came to $612.40. ');
+    const bad = goodSummary('Dining came to ₹612.40. ');
     const create = vi
       .fn()
       .mockResolvedValueOnce(textResponse(bad))
@@ -267,16 +267,16 @@ describe('AnthropicMonthlySummarizer', () => {
 
     expect(create).toHaveBeenCalledTimes(2);
     expect(result).toMatchObject({ source: 'model', calls: 2 });
-    expect(result.rejections.join(' ')).toContain('$612.40');
+    expect(result.rejections.join(' ')).toContain('₹612.40');
 
     const second = create.mock.calls[1][0];
     expect(second.messages).toHaveLength(3);
     expect(second.messages[1]).toMatchObject({ role: 'assistant', content: bad });
-    expect(second.messages[2].content).toContain('$612.40');
+    expect(second.messages[2].content).toContain('₹612.40');
   });
 
   it('falls back to the figures rather than publish a third guess', async () => {
-    const bad = goodSummary('Dining came to $612.40. ');
+    const bad = goodSummary('Dining came to ₹612.40. ');
     const create = vi.fn().mockResolvedValue(textResponse(bad));
 
     const result = await new AnthropicMonthlySummarizer({ client: fakeClient(create) }).summarize(
@@ -290,7 +290,7 @@ describe('AnthropicMonthlySummarizer', () => {
   });
 
   it('never returns text that fails its own check', async () => {
-    const create = vi.fn().mockResolvedValue(textResponse(goodSummary('And $612.40 of dining. ')));
+    const create = vi.fn().mockResolvedValue(textResponse(goodSummary('And ₹612.40 of dining. ')));
     const result = await new AnthropicMonthlySummarizer({ client: fakeClient(create) }).summarize(
       JUNE,
     );

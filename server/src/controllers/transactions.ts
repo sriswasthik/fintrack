@@ -206,7 +206,7 @@ export const commitTransactions: RequestHandler = async (req, res) => {
         rawMerchant: row.rawMerchant,
         normalizedMerchant: row.normalizedMerchant,
         amount: row.amount.toFixed(2),
-        currency: 'USD',
+        currency: 'INR',
         category: 'UNCATEGORIZED' as const,
         confidence: 0,
         source: 'RULE' as const,

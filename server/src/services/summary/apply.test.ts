@@ -257,7 +257,7 @@ describe('when the model is not configured', () => {
 
     expect(record.source).toBe('fallback');
     expect(record.unavailable).toContain('not configured');
-    expect(record.content).toContain('$8,959.49');
+    expect(record.content).toContain('₹8,959.49');
   });
 
   it('caches nothing, so fixing the credential is all it takes', async () => {

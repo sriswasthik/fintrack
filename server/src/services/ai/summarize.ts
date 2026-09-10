@@ -7,7 +7,7 @@
  *
  * The interesting problem is not getting prose out of a model, it is making
  * sure the prose is *true*. A summary that says "you spent about nine thousand"
- * when the dashboard above it says $8,959.49 is worse than no summary at all:
+ * when the dashboard above it says ₹8,95,949 is worse than no summary at all:
  * it teaches the user that the numbers on this page cannot be trusted. So the
  * output goes through a figure check before anyone sees it —
  *
@@ -23,6 +23,7 @@
 import Anthropic from '@anthropic-ai/sdk';
 
 import type { MonthlyStats } from '../summary/stats';
+import { formatINR } from '../../utils/currency';
 
 /** Anthropic model used for summaries. */
 export const SUMMARY_MODEL = 'claude-opus-5';
@@ -60,8 +61,7 @@ export interface MonthlySummarizer {
 // agree on what a figure looks like.
 // ---------------------------------------------------------------------------
 
-export const money = (amount: number): string =>
-  amount.toLocaleString('en-US', { style: 'currency', currency: 'USD' });
+export const money = (amount: number): string => formatINR(amount);
 
 export const percent = (value: number): string => `${value}%`;
 
@@ -71,10 +71,13 @@ const categoryLabel = (category: string): string => category.replace(/_/g, ' ').
 // Validation
 // ---------------------------------------------------------------------------
 
-const MONEY_PATTERN = /\$\s?-?\d[\d,]*(?:\.\d{1,2})?/g;
+// Matches what `money` above produces: the sign sits outside the symbol, so
+// "-₹1,23,456.78" must be read as one figure rather than a stray minus and a
+// positive amount.
+const MONEY_PATTERN = /-?₹\s?\d[\d,]*(?:\.\d{1,2})?/g;
 const PERCENT_PATTERN = /-?\d+(?:\.\d+)?\s?%/g;
 
-const toNumber = (token: string): number => Number(token.replace(/[$,%\s]/g, ''));
+const toNumber = (token: string): number => Number(token.replace(/[₹,%\s]/g, ''));
 
 /** Money figures found in a piece of text, as numbers. */
 export function moneyFigures(text: string): number[] {
