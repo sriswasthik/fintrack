@@ -29,7 +29,7 @@ function transaction(overrides: Partial<Transaction> & { id: string }): Transact
     rawMerchant: 'TST* THE HALL - DOWNTOWN',
     normalizedMerchant: 'THE HALL',
     amount: 42.5,
-    currency: 'USD',
+    currency: 'INR',
     category: 'UNCATEGORIZED',
     confidence: 0,
     source: 'RULE',

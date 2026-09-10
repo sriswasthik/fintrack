@@ -23,11 +23,10 @@ import {
 import { SplitDialog } from '@/components/SplitDialog';
 import { EmptyState, ErrorState, Loading } from '@/components/states';
 import { fetchAccounts, fetchTransactions, type Transaction } from '@/lib/transactions';
+import { formatINR } from '@/lib/currency';
 
 const PAGE_SIZE = 50;
 
-const money = (amount: number) =>
-  amount.toLocaleString('en-US', { style: 'currency', currency: 'USD' });
 
 export function TransactionsPage() {
   const queryClient = useQueryClient();
@@ -127,7 +126,7 @@ export function TransactionsPage() {
                     </div>
                   </TableCell>
                   <TableCell className="text-right tabular-nums">
-                    {money(transaction.amount)}
+                    {formatINR(transaction.amount)}
                   </TableCell>
                   <TableCell>
                     <Button size="sm" variant="ghost" onClick={() => setSelected(transaction)}>

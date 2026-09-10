@@ -33,7 +33,7 @@ const regenerateSummaryMock = vi.mocked(regenerateSummary);
 const JUNE: MonthlySummary = {
   month: '2026-06',
   content:
-    'June was a calmer month. You spent $8,959.49 against income of $10,926.72, a savings rate of 18%.',
+    'June was a calmer month. You spent ₹8,959.49 against income of ₹10,926.72, a savings rate of 18%.',
   source: 'model',
   cached: true,
   stale: false,
@@ -79,7 +79,7 @@ beforeEach(() => {
   fetchSummaryMock.mockResolvedValue(JUNE);
   regenerateSummaryMock.mockResolvedValue({
     ...JUNE,
-    content: 'A fresh look at June: $8,959.49 out, $10,926.72 in.',
+    content: 'A fresh look at June: ₹8,959.49 out, ₹10,926.72 in.',
     cached: false,
   });
 });
@@ -95,8 +95,8 @@ describe('SummaryPage', () => {
   it('shows the figures the recap was written from, so a reader can check it', async () => {
     renderPage();
 
-    expect(await screen.findByText('$8,959.49')).toBeInTheDocument();
-    expect(screen.getByText('$10,926.72')).toBeInTheDocument();
+    expect(await screen.findByText('₹8,959.49')).toBeInTheDocument();
+    expect(screen.getByText('₹10,926.72')).toBeInTheDocument();
     expect(screen.getByText('18%')).toBeInTheDocument();
     expect(screen.getByText('HOUSING')).toBeInTheDocument();
     expect(screen.getByText('-60.4%')).toBeInTheDocument();

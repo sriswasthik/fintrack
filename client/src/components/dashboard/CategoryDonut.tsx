@@ -4,9 +4,8 @@ import { Cell, Pie, PieChart, ResponsiveContainer, Tooltip } from 'recharts';
 import { toSlices, type DonutSlice } from '@/components/dashboard/slices';
 import type { CategoryTotal } from '@/lib/dashboard';
 import type { Category } from '@/lib/transactions';
+import { formatINRCompact } from '@/lib/currency';
 
-const money = (n: number) =>
-  n.toLocaleString('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 });
 
 /**
  * Part-to-whole at a glance.
@@ -74,7 +73,7 @@ export function CategoryDonut({
                   <div className="bg-popover text-popover-foreground rounded-md border px-3 py-2 text-xs shadow-md">
                     <div className="font-medium">{slice.label}</div>
                     <div className="text-muted-foreground tabular-nums">
-                      {money(slice.amount)} · {slice.share}%
+                      {formatINRCompact(slice.amount)} · {slice.share}%
                     </div>
                   </div>
                 );
@@ -85,7 +84,7 @@ export function CategoryDonut({
         {/* The hero figure sits in the hole rather than as a floating label. */}
         <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
           <span className="text-muted-foreground text-[10px] tracking-wide uppercase">Spend</span>
-          <span className="text-xl font-semibold tabular-nums">{money(total)}</span>
+          <span className="text-xl font-semibold tabular-nums">{formatINRCompact(total)}</span>
         </div>
       </div>
 
@@ -108,7 +107,7 @@ export function CategoryDonut({
               />
               <span className="min-w-0 flex-1 truncate">{slice.label}</span>
               <span className="text-muted-foreground shrink-0 tabular-nums">
-                {money(slice.amount)}
+                {formatINRCompact(slice.amount)}
               </span>
               <span className="text-muted-foreground w-11 shrink-0 text-right tabular-nums">
                 {slice.share}%

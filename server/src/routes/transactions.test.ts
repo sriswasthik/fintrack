@@ -41,8 +41,8 @@ const ACCOUNT_ID = 'acct_checking';
 const GENERIC_CSV = [
   'date,description,amount,account',
   '2026-03-01,OAKWOOD PROPERTY MGMT,2150.00,Everyday Checking',
-  '2026-03-01,SQ *JOES COFFEE,5.25,Sapphire Credit Card',
-  '2026-03-01,SQ *JOES COFFEE,5.25,Sapphire Credit Card',
+  '2026-03-01,PAYTM*CHAI POINT,5.25,Sapphire Credit Card',
+  '2026-03-01,PAYTM*CHAI POINT,5.25,Sapphire Credit Card',
   '2026-03-02,NORTHWIND LABS DIRECT DEP,-3421.55,Everyday Checking',
 ].join('\r\n');
 
@@ -130,8 +130,8 @@ describe('POST /api/transactions/upload', () => {
     expect(response.body.rows[1]).toMatchObject({
       index: 2,
       date: '2026-03-01',
-      rawMerchant: 'SQ *JOES COFFEE',
-      normalizedMerchant: 'JOES COFFEE',
+      rawMerchant: 'PAYTM*CHAI POINT',
+      normalizedMerchant: 'CHAI POINT',
       amount: 5.25,
     });
   });
@@ -216,7 +216,7 @@ describe('POST /api/transactions/upload', () => {
   it('detects a Chase export and flips its sign convention', async () => {
     const chase = [
       'Transaction Date,Post Date,Description,Category,Type,Amount,Memo',
-      '03/01/2026,03/03/2026,SQ *JOES COFFEE,Food & Drink,Sale,-5.25,',
+      '03/01/2026,03/03/2026,PAYTM*CHAI POINT,Food & Drink,Sale,-5.25,',
     ].join('\n');
 
     const response = await upload(chase).expect(200);
@@ -318,10 +318,10 @@ describe('POST /api/transactions/upload with the Phase 1 synthetic export', () =
       ]),
     );
 
-    expect(byRaw.get('SQ *JOES COFFEE')).toBe('JOES COFFEE');
-    expect(byRaw.get('TST* RAMEN TATSU-YA')).toBe('RAMEN TATSU-YA');
+    expect(byRaw.get('PAYTM*CHAI POINT')).toBe('CHAI POINT');
+    expect(byRaw.get('TST* BARBEQUE NATION')).toBe('BARBEQUE NATION');
     expect(byRaw.get('PAYPAL *STEAMGAMES')).toBe('STEAM');
-    expect(byRaw.get('DOORDASH*THAI BASIL')).toBe('DOORDASH');
+    expect(byRaw.get('SWIGGY*THAI BASIL')).toBe('SWIGGY');
   });
 });
 
@@ -331,18 +331,18 @@ describe('POST /api/transactions/commit', () => {
       index: 1,
       date: '2026-03-01',
       postedDate: '2026-03-03',
-      description: 'SQ *JOES COFFEE',
-      rawMerchant: 'SQ *JOES COFFEE',
-      normalizedMerchant: 'JOES COFFEE',
+      description: 'PAYTM*CHAI POINT',
+      rawMerchant: 'PAYTM*CHAI POINT',
+      normalizedMerchant: 'CHAI POINT',
       amount: 5.25,
     },
     {
       index: 2,
       date: '2026-03-01',
       postedDate: null,
-      description: 'SQ *JOES COFFEE',
-      rawMerchant: 'SQ *JOES COFFEE',
-      normalizedMerchant: 'JOES COFFEE',
+      description: 'PAYTM*CHAI POINT',
+      rawMerchant: 'PAYTM*CHAI POINT',
+      normalizedMerchant: 'CHAI POINT',
       amount: 5.25,
     },
   ];
@@ -360,10 +360,10 @@ describe('POST /api/transactions/commit', () => {
     expect(inserted).toHaveLength(2);
     expect(inserted[0]).toMatchObject({
       accountId: ACCOUNT_ID,
-      description: 'SQ *JOES COFFEE',
-      normalizedMerchant: 'JOES COFFEE',
+      description: 'PAYTM*CHAI POINT',
+      normalizedMerchant: 'CHAI POINT',
       amount: '5.25',
-      currency: 'USD',
+      currency: 'INR',
       category: 'UNCATEGORIZED',
       confidence: 0,
     });
@@ -442,7 +442,7 @@ describe('POST /api/transactions/:id/split (§8 case 3)', () => {
       rawMerchant: 'TARGET 0002341',
       normalizedMerchant: 'TARGET',
       amount: 187.43,
-      currency: 'USD',
+      currency: 'INR',
       category: 'SHOPPING',
       confidence: 1,
       source: 'RULE',
@@ -519,7 +519,7 @@ describe('POST /api/transactions/:id/split (§8 case 3)', () => {
       rawMerchant: 'X',
       normalizedMerchant: 'X',
       amount: 0.3,
-      currency: 'USD',
+      currency: 'INR',
       category: 'SHOPPING',
       confidence: 1,
       source: 'RULE',
@@ -544,7 +544,7 @@ describe('POST /api/transactions/:id/split (§8 case 3)', () => {
       rawMerchant: 'REFUND',
       normalizedMerchant: 'X',
       amount: -50,
-      currency: 'USD',
+      currency: 'INR',
       category: 'REFUND',
       confidence: 1,
       source: 'RULE',
@@ -608,7 +608,7 @@ describe('GET /api/review-queue', () => {
     rawMerchant: 'TST* THE HALL - DOWNTOWN',
     normalizedMerchant: 'THE HALL',
     amount: 42.5,
-    currency: 'USD',
+    currency: 'INR',
     category: 'UNCATEGORIZED',
     confidence: 0,
     source: 'RULE',
@@ -674,11 +674,11 @@ describe('POST /api/transactions/:id/category', () => {
       accountId: ACCOUNT_ID,
       date: new Date('2026-05-02T00:00:00.000Z'),
       postedDate: null,
-      description: 'PAYPAL *WWWSTORE',
-      rawMerchant: 'PAYPAL *WWWSTORE',
+      description: 'RAZ*WWWSTORE',
+      rawMerchant: 'RAZ*WWWSTORE',
       normalizedMerchant: 'WWWSTORE',
       amount: 129,
-      currency: 'USD',
+      currency: 'INR',
       category: 'UNCATEGORIZED',
       confidence: 0,
       source: 'RULE',
@@ -772,7 +772,7 @@ describe('POST /api/transactions/:id/category', () => {
       rawMerchant: 'A+B (CO.)',
       normalizedMerchant: 'A+B (CO.)',
       amount: 1,
-      currency: 'USD',
+      currency: 'INR',
       category: 'UNCATEGORIZED',
       confidence: 0,
       source: 'RULE',

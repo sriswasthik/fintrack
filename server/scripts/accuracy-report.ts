@@ -16,6 +16,7 @@ import { join } from 'node:path';
 
 import {
   generateDataset,
+  MONTHLY_BILL_MERCHANTS,
   transactionsByEdgeCase,
   type EdgeCase,
   type GeneratedTransaction,
@@ -30,6 +31,7 @@ import {
 import { HEADER_PRESETS, parseTransactions } from '../src/services/parsing/csv';
 import { flagDuplicates } from '../src/services/parsing/dedup';
 import { DEFAULT_RULES } from '../src/services/rules/defaults';
+import { formatINR } from '../src/utils/currency';
 import { runEngine, type EngineRule, type EngineTransaction } from '../src/services/rules/engine';
 
 const ROOT = join(__dirname, '..', '..');
@@ -187,7 +189,7 @@ const unplantedFlags = flagVerdicts.filter((f) => f.planted === null);
 /** Every anomaly the generator planted, and whether detection found it. */
 const expectedAnomalies = [
   ...rowsBy('large-one-off').map((t) => ({
-    label: `${t.normalizedMerchant} $${t.amount.toFixed(2)} (${t.date})`,
+    label: `${t.normalizedMerchant} ${formatINR(t.amount)} (${t.date})`,
     kind: 'large one-off',
     found: flags.some((f) => f.type === 'UNUSUAL_AMOUNT' && f.transactionId === String(t.row)),
   })),
@@ -197,7 +199,7 @@ const expectedAnomalies = [
     return raised
       ? [
           {
-            label: `${raised.normalizedMerchant} $${charges[0].amount.toFixed(2)} → $${raised.amount.toFixed(2)} (${raised.date})`,
+            label: `${raised.normalizedMerchant} ${formatINR(charges[0].amount)} → ${formatINR(raised.amount)} (${raised.date})`,
             kind: 'subscription price change',
             found: flags.some(
               (f) =>
@@ -228,21 +230,7 @@ const expectedAnomalies = [
 // ---------------------------------------------------------------------------
 
 /** Merchants the generator bills on a fixed day each month. */
-const MONTHLY_BILLS = [
-  'ADOBE',
-  'AMAZON PRIME',
-  'APPLE ICLOUD',
-  'DISNEY PLUS',
-  'LEMONADE INSURANCE',
-  'MINT MOBILE',
-  'NETFLIX',
-  'NEW YORK TIMES',
-  'OAKWOOD PROPERTY MGMT',
-  'PGE',
-  'PLANET FITNESS',
-  'SONIC FIBER',
-  'SPOTIFY',
-];
+const MONTHLY_BILLS = MONTHLY_BILL_MERCHANTS;
 
 const classifiedRecurring = new Set(
   months.flatMap((month) =>
@@ -313,9 +301,24 @@ ${table(
 
 The denominator excludes the ${dataset.length - auto.length} rows that arrive already corrected by a human (§8 case 12) — those are not auto-categorized, so counting them either way would be measuring the wrong thing.
 
-**Nothing is miscategorized.** Every row the engine has an opinion about, it
+${
+  incorrect.length === 0
+    ? `**Nothing is miscategorized.** Every row the engine has an opinion about, it
 gets right; the residual is rows it declines to guess on, which land in the
-review queue exactly as §7 requires.
+review queue exactly as §7 requires.`
+    : `**${incorrect.length} row(s) are miscategorized** — the engine committed to an
+answer and got it wrong, which is worse than declining to guess. The rest of the
+residual is rows it left for review, exactly as §7 requires.
+
+${table(
+  ['Merchant', 'Got', 'Expected'],
+  incorrect.map((s) => [
+    `\`${s.transaction.normalizedMerchant}\``,
+    s.actual,
+    s.expected,
+  ]),
+)}`
+}
 
 ## Where the remaining ${unresolved.length} go
 

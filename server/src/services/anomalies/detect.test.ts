@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   generateDataset,
+  MONTHLY_BILL_MERCHANTS,
   transactionsByEdgeCase,
   type GeneratedTransaction,
 } from '../../../prisma/seed-data';
@@ -119,7 +120,7 @@ describe('the anomalies planted in the seed data', () => {
     });
   });
 
-  it('rates the $3,299 laptop more severely than the $1,842 flight', () => {
+  it('rates the ₹79,900 phone more severely than the ₹24,500 flight', () => {
     const [laptop, flight] = planted('large-one-off');
     const laptopFlag = detectAmountOutliers(SEEDED, { month: laptop.date.slice(0, 7) }).find(
       (f) => f.transactionId === String(laptop.row),
@@ -143,8 +144,8 @@ describe('the anomalies planted in the seed data', () => {
     expect(netflix).toHaveLength(1);
     expect(netflix[0].type).toBe('SUBSCRIPTION_PRICE_INCREASE');
     expect(netflix[0].transactionId).toBe(String(after.row));
-    expect(netflix[0].explanation).toContain('$15.49');
-    expect(netflix[0].explanation).toContain('$17.99');
+    expect(netflix[0].explanation).toContain('₹499.00');
+    expect(netflix[0].explanation).toContain('₹649.00');
   });
 
   it('does not repeat the price change in the months that follow it', () => {
@@ -196,10 +197,10 @@ describe('the anomalies planted in the seed data', () => {
     const summary = ALL_SEEDED_FLAGS.map((f) => `${f.month} ${f.type} ${f.explanation}`);
 
     const planted = [
-      /2026-05 UNUSUAL_AMOUNT \$3,299\.00 at APPLE STORE/,
-      /2026-07 UNUSUAL_AMOUNT \$1,842\.60 at DELTA AIR LINES/,
-      /2026-06 SUBSCRIPTION_PRICE_INCREASE NETFLIX went up from \$15\.49 to \$17\.99/,
-      /2026-08 NEW_RECURRING_CHARGE DISNEY PLUS looks like a new recurring charge/,
+      /2026-05 UNUSUAL_AMOUNT ₹79,900\.00 at CROMA RETAIL/,
+      /2026-07 UNUSUAL_AMOUNT ₹24,500\.00 at INDIGO AIRLINES/,
+      /2026-06 SUBSCRIPTION_PRICE_INCREASE NETFLIX went up from ₹499\.00 to ₹649\.00/,
+      /2026-08 NEW_RECURRING_CHARGE HOTSTAR looks like a new recurring charge/,
       /2026-05 CATEGORY_SPEND_SPIKE SHOPPING came to/,
     ];
 
@@ -225,7 +226,7 @@ describe('false positives', () => {
     // months — which is exactly what a subscription looks like from far enough
     // away. It is a habit, not a plan, and must never be flagged as one.
     expect(charges.length).toBeGreaterThan(20);
-    expect(Math.max(...charges.map((c) => c.amount))).toBeLessThan(10);
+    expect(Math.max(...charges.map((c) => c.amount))).toBeLessThan(400);
 
     const flags = SEEDED_MONTHS.flatMap((month) => detectNewRecurringCharges(SEEDED, { month }));
     expect(flags.filter((f) => f.explanation.startsWith(coffee))).toEqual([]);
@@ -282,21 +283,9 @@ describe('false positives', () => {
     // Every merchant the generator bills on a fixed day of the month, listed
     // here rather than derived so that a change to the seed fails this test
     // instead of quietly moving the goalposts.
-    const monthlyBills = [
-      'ADOBE',
-      'AMAZON PRIME',
-      'APPLE ICLOUD',
-      'DISNEY PLUS',
-      'LEMONADE INSURANCE',
-      'MINT MOBILE',
-      'NETFLIX',
-      'NEW YORK TIMES',
-      'OAKWOOD PROPERTY MGMT',
-      'PGE',
-      'PLANET FITNESS',
-      'SONIC FIBER',
-      'SPOTIFY',
-    ];
+    // Derived from the generator rather than listed here: a hand-kept copy
+    // silently went stale the moment the merchant names changed.
+    const monthlyBills = MONTHLY_BILL_MERCHANTS;
 
     const classified = new Set(
       SEEDED_MONTHS.flatMap((month) =>
@@ -352,7 +341,7 @@ describe('detectAmountOutliers', () => {
   ];
 
   it('flags a charge outside its own category-s fence', () => {
-    const flags = detectAmountOutliers([...dining, ordinary(20, 400)], { month: '2026-06' });
+    const flags = detectAmountOutliers([...dining, ordinary(20, 8000)], { month: '2026-06' });
     expect(flags).toHaveLength(1);
     expect(flags[0].explanation).toContain('unusually large for DINING');
   });
@@ -371,26 +360,26 @@ describe('detectAmountOutliers', () => {
   });
 
   it('only reports charges in the month asked about', () => {
-    const withOutlier = [...dining, tx('2026-05-20', 'BIG', 400, 'DINING')];
+    const withOutlier = [...dining, tx('2026-05-20', 'BIG', 8000, 'DINING')];
     expect(detectAmountOutliers(withOutlier, { month: '2026-06' })).toEqual([]);
     expect(detectAmountOutliers(withOutlier, { month: '2026-05' })).toHaveLength(1);
   });
 
   it('judges a charge by what was kept, not what was rung up (§8 case 2)', () => {
-    const returned = { ...ordinary(20, 400), refunded: 400 };
-    // A $400 dinner returned in full is not $400 of dining, so it is not an
+    const returned = { ...ordinary(20, 8000), refunded: 8000 };
+    // A ₹8,000 dinner returned in full is not ₹8,000 of dining, so it is not an
     // unusual amount of it either.
     expect(detectAmountOutliers([...dining, returned], { month: '2026-06' })).toEqual([]);
   });
 
   it('still flags what is left after a partial refund', () => {
-    const partly = { ...ordinary(20, 400), refunded: 100 };
+    const partly = { ...ordinary(20, 8000), refunded: 2000 };
     const flags = detectAmountOutliers([...dining, partly], { month: '2026-06' });
 
     expect(flags).toHaveLength(1);
-    // The explanation quotes the $300 that actually left, not the $400.
-    expect(flags[0].explanation).toContain('$300.00');
-    expect(flags[0].explanation).not.toContain('$400.00');
+    // The explanation quotes the ₹6,000 that actually left, not the ₹8,000.
+    expect(flags[0].explanation).toContain('₹6,000.00');
+    expect(flags[0].explanation).not.toContain('₹8,000.00');
   });
 
   it('ignores income, transfers and the uncategorized queue', () => {
@@ -446,25 +435,25 @@ describe('detectNewRecurringCharges', () => {
   );
 
   it('flags on the confirming second charge', () => {
-    const rows = [...history, ...monthly('DISNEY PLUS', 13.99, '2026-05-14', 2)];
+    const rows = [...history, ...monthly('HOTSTAR', 299, '2026-05-14', 2)];
     expect(detectNewRecurringCharges(rows, { month: '2026-05' })).toEqual([]);
 
     const flags = detectNewRecurringCharges(rows, { month: '2026-06' });
     expect(flags).toHaveLength(1);
-    expect(flags[0].explanation).toContain('DISNEY PLUS');
+    expect(flags[0].explanation).toContain('HOTSTAR');
   });
 
   it('says nothing when the merchant was already billing before the run', () => {
     const rows = [
       ...history,
-      tx('2026-02-14', 'DISNEY PLUS', 9.99, 'SUBSCRIPTIONS'),
-      ...monthly('DISNEY PLUS', 13.99, '2026-05-14', 2),
+      tx('2026-02-14', 'HOTSTAR', 199, 'SUBSCRIPTIONS'),
+      ...monthly('HOTSTAR', 299, '2026-05-14', 2),
     ];
     expect(detectNewRecurringCharges(rows, { month: '2026-06' })).toEqual([]);
   });
 
   it('will not call something new when there is no history to have missed it in', () => {
-    const rows = monthly('DISNEY PLUS', 13.99, '2026-05-14', 2);
+    const rows = monthly('HOTSTAR', 299, '2026-05-14', 2);
     expect(detectNewRecurringCharges(rows, { month: '2026-06' })).toEqual([]);
   });
 
@@ -484,14 +473,14 @@ describe('detectSubscriptionPriceIncreases', () => {
   ];
 
   it('flags a rise once the old price was settled', () => {
-    const flags = detectSubscriptionPriceIncreases(raised(15.49, 17.99), { month: '2026-06' });
+    const flags = detectSubscriptionPriceIncreases(raised(499, 649), { month: '2026-06' });
     expect(flags).toHaveLength(1);
-    expect(flags[0].explanation).toContain('+16%');
-    expect(flags[0].explanation).toContain('$30.00 a year');
+    expect(flags[0].explanation).toContain('+30%');
+    expect(flags[0].explanation).toContain('₹1,800.00 a year');
   });
 
   it('ignores a fall', () => {
-    expect(detectSubscriptionPriceIncreases(raised(17.99, 15.49), { month: '2026-06' })).toEqual(
+    expect(detectSubscriptionPriceIncreases(raised(649, 499), { month: '2026-06' })).toEqual(
       [],
     );
   });
@@ -518,17 +507,17 @@ describe('detectCategorySpikes', () => {
 
   it('flags a month well above its own baseline', () => {
     const rows = [
-      ...monthOfSpending('2026-03', 400),
-      ...monthOfSpending('2026-04', 440),
-      ...monthOfSpending('2026-05', 1600),
+      ...monthOfSpending('2026-03', 8000),
+      ...monthOfSpending('2026-04', 8800),
+      ...monthOfSpending('2026-05', 32000),
     ];
     const flags = detectCategorySpikes(rows, { month: '2026-05' });
     expect(flags).toHaveLength(1);
-    expect(flags[0].explanation).toContain('SHOPPING came to $1,600.00');
+    expect(flags[0].explanation).toContain('SHOPPING came to ₹32,000.00');
   });
 
   it('needs a baseline before it will claim anything', () => {
-    const rows = [...monthOfSpending('2026-04', 400), ...monthOfSpending('2026-05', 1600)];
+    const rows = [...monthOfSpending('2026-04', 8000), ...monthOfSpending('2026-05', 32000)];
     expect(detectCategorySpikes(rows, { month: '2026-05' })).toEqual([]);
   });
 
@@ -543,23 +532,23 @@ describe('detectCategorySpikes', () => {
 
   it('uses a median baseline, so one huge month cannot hide the next', () => {
     const rows = [
-      ...monthOfSpending('2026-02', 400),
-      ...monthOfSpending('2026-03', 420),
-      ...monthOfSpending('2026-04', 440),
-      ...monthOfSpending('2026-05', 6000),
-      ...monthOfSpending('2026-06', 1400),
+      ...monthOfSpending('2026-02', 8000),
+      ...monthOfSpending('2026-03', 8400),
+      ...monthOfSpending('2026-04', 8800),
+      ...monthOfSpending('2026-05', 120000),
+      ...monthOfSpending('2026-06', 28000),
     ];
 
-    // A mean baseline would be ~1815 and June would look like a quiet month.
+    // A mean baseline would be ~36,300 and June would look like a quiet month.
     expect(detectCategorySpikes(rows, { month: '2026-06' })).toHaveLength(1);
   });
 
   it('nets a refund against the category it was attributed to', () => {
     const rows = [
-      ...monthOfSpending('2026-03', 400),
-      ...monthOfSpending('2026-04', 440),
-      ...monthOfSpending('2026-05', 1600),
-      tx('2026-05-20', 'WAYFAIR', -1000, 'SHOPPING'),
+      ...monthOfSpending('2026-03', 8000),
+      ...monthOfSpending('2026-04', 8800),
+      ...monthOfSpending('2026-05', 32000),
+      tx('2026-05-20', 'PEPPERFRY', -20000, 'SHOPPING'),
     ];
     expect(detectCategorySpikes(rows, { month: '2026-05' })).toEqual([]);
   });

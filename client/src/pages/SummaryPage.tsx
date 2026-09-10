@@ -5,6 +5,7 @@ import { useSearchParams } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { useAuth } from '@/context/auth-context';
+import { formatINR } from '@/lib/currency';
 import {
   Table,
   TableBody,
@@ -20,7 +21,6 @@ import {
   type MonthlySummary,
 } from '@/lib/summary';
 
-const money = (n: number) => n.toLocaleString('en-US', { style: 'currency', currency: 'USD' });
 const signedPercent = (n: number) => `${n > 0 ? '+' : ''}${n}%`;
 
 function monthLabel(month: string): string {
@@ -67,9 +67,9 @@ function FiguresBehindIt({ stats }: { stats: MonthlyStats }) {
       <CardContent className="space-y-6">
         <dl className="grid grid-cols-2 gap-x-4 gap-y-3 sm:grid-cols-4">
           {[
-            { label: 'Spend', value: money(stats.spend), change: stats.spendChange },
-            { label: 'Income', value: money(stats.income), change: stats.incomeChange },
-            { label: 'Net', value: money(stats.net) },
+            { label: 'Spend', value: formatINR(stats.spend), change: stats.spendChange },
+            { label: 'Income', value: formatINR(stats.income), change: stats.incomeChange },
+            { label: 'Net', value: formatINR(stats.net) },
             {
               label: 'Savings rate',
               value: stats.savingsRate === null ? '—' : `${stats.savingsRate}%`,
@@ -103,9 +103,9 @@ function FiguresBehindIt({ stats }: { stats: MonthlyStats }) {
               {stats.topCategories.map((row) => (
                 <TableRow key={row.category}>
                   <TableCell>{row.category.replace(/_/g, ' ')}</TableCell>
-                  <TableCell className="text-right tabular-nums">{money(row.amount)}</TableCell>
+                  <TableCell className="text-right tabular-nums">{formatINR(row.amount)}</TableCell>
                   <TableCell className="text-muted-foreground text-right tabular-nums">
-                    {money(row.previousAmount)}
+                    {formatINR(row.previousAmount)}
                   </TableCell>
                   <TableCell className="text-right tabular-nums">
                     {row.change === null ? '—' : signedPercent(row.change)}
@@ -119,7 +119,7 @@ function FiguresBehindIt({ stats }: { stats: MonthlyStats }) {
         {stats.topMerchant && (
           <p className="text-muted-foreground text-sm">
             Most at one merchant: {stats.topMerchant.merchant},{' '}
-            <span className="tabular-nums">{money(stats.topMerchant.amount)}</span> across{' '}
+            <span className="tabular-nums">{formatINR(stats.topMerchant.amount)}</span> across{' '}
             {stats.topMerchant.transactions}{' '}
             {stats.topMerchant.transactions === 1 ? 'transaction' : 'transactions'}.
           </p>

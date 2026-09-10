@@ -16,10 +16,11 @@
  *
  * The hard part is not finding anomalies, it is not crying wolf. Every detector
  * below carries a materiality floor as well as a ratio, because "300% above
- * average" on a $2 baseline is noise, and a review queue full of noise is one
+ * average" on a ₹150 baseline is noise, and a review queue full of noise is one
  * nobody reads.
  */
 import type { AnomalySeverity, AnomalyType, Category } from '../../generated/prisma/enums';
+import { formatINR } from '../../utils/currency';
 import { median, upperFence, zScore } from './statistics';
 
 /** The fields detection reads. */
@@ -95,8 +96,14 @@ export const DEFAULTS: DetectionThresholds = {
   outlierIqrMultiplier: 1.5,
   /** Below this many observations a category has no distribution worth trusting. */
   outlierMinSample: 8,
-  /** A charge smaller than this is never "unusual", however odd the category. */
-  outlierMinAmount: 40,
+  /**
+   * A charge smaller than this is never "unusual", however odd the category.
+   * ₹4,000 is about where a charge stops being an ordinary errand — a tank of
+   * fuel, a family dinner, a doctor's visit all sit below it, and none of them
+   * is worth interrupting somebody over however far above their own category
+   * median they happen to land.
+   */
+  outlierMinAmount: 4000,
 
   /** A gap between charges inside this band counts as monthly. */
   recurringMinGapDays: 24,
@@ -134,12 +141,17 @@ export const DEFAULTS: DetectionThresholds = {
 
   /** A subscription price move smaller than either of these is not material. */
   priceChangeMinRatio: 0.05,
-  priceChangeMinAbsolute: 0.5,
+  /** ₹20 — below a rupee or two of GST rounding on a streaming plan. */
+  priceChangeMinAbsolute: 20,
 
   /** A month must exceed the trailing median by this fraction to be a spike. */
   spikeMinRatio: 0.5,
-  /** ...and by this many currency units, so a tiny category cannot spike. */
-  spikeMinAbsolute: 100,
+  /**
+   * ...and by this many rupees, so a tiny category cannot spike. ₹5,000 is
+   * roughly a fortnight of groceries: enough that a flagged month is one a
+   * person would actually recognise as heavier than usual.
+   */
+  spikeMinAbsolute: 5000,
   /** Months of history needed before a baseline means anything. */
   spikeMinMonths: 2,
 };
@@ -174,8 +186,7 @@ export function trailingMonths(month: string, count: number): string[] {
  */
 const roundCents = (amount: number): number => Math.round(amount * 100) / 100;
 
-const money = (amount: number): string =>
-  amount.toLocaleString('en-US', { style: 'currency', currency: 'USD' });
+const money = (amount: number): string => formatINR(amount);
 
 const percent = (ratio: number): string => `${Math.round(ratio * 100)}%`;
 

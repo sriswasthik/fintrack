@@ -97,7 +97,7 @@ beforeEach(() => {
         rawMerchant: 'OAKWOOD PROPERTY MGMT',
         normalizedMerchant: 'OAKWOOD PROPERTY MGMT',
         amount: 2150,
-        currency: 'USD',
+        currency: 'INR',
         category: 'HOUSING',
         confidence: 1,
         source: 'RULE',
@@ -113,9 +113,9 @@ describe('DashboardPage', () => {
   it('leads with the headline totals and their change', async () => {
     renderPage();
 
-    expect(await screen.findByText('$8,959.49')).toBeInTheDocument();
-    expect(screen.getByText('$10,926.72')).toBeInTheDocument();
-    expect(screen.getByText('$1,967.23')).toBeInTheDocument();
+    expect(await screen.findByText('₹8,959.49')).toBeInTheDocument();
+    expect(screen.getByText('₹10,926.72')).toBeInTheDocument();
+    expect(screen.getByText('₹1,967.23')).toBeInTheDocument();
     expect(screen.getByText('111')).toBeInTheDocument();
   });
 
@@ -130,21 +130,21 @@ describe('DashboardPage', () => {
 
   it('does not claim "no prior period" for a metric that has no comparison', async () => {
     renderPage();
-    await screen.findByText('$1,967.23');
+    await screen.findByText('₹1,967.23');
     expect(screen.queryByText('no prior period')).not.toBeInTheDocument();
   });
 
   it('lists every category at full precision, including one left negative', async () => {
     renderPage();
     // The tables render empty before the data lands, so wait for the data.
-    await screen.findByText('$8,959.49');
+    await screen.findByText('₹8,959.49');
 
     // Scope by the table's own header rather than by position.
     const tables = await screen.findAllByRole('table');
     const categoryTable = tables.find((t) => within(t).queryByText('Share'))!;
 
     expect(within(categoryTable).getByText('HOUSING')).toBeInTheDocument();
-    expect(within(categoryTable).getByText('-$10,926.72')).toBeInTheDocument();
+    expect(within(categoryTable).getByText('-₹10,926.72')).toBeInTheDocument();
     // INCOME is listed but carries no share of spending.
     expect(within(categoryTable).getAllByText('—').length).toBeGreaterThan(0);
   });
@@ -152,7 +152,7 @@ describe('DashboardPage', () => {
   it('refetches through React Query when the account filter changes', async () => {
     const user = userEvent.setup();
     renderPage();
-    await screen.findByText('$8,959.49');
+    await screen.findByText('₹8,959.49');
 
     await user.click(screen.getByRole('combobox', { name: 'Account' }));
     await user.click(await screen.findByRole('option', { name: 'Sapphire Credit Card' }));
@@ -163,7 +163,7 @@ describe('DashboardPage', () => {
   it('passes a category filter through as a list', async () => {
     const user = userEvent.setup();
     renderPage();
-    await screen.findByText('$8,959.49');
+    await screen.findByText('₹8,959.49');
 
     await user.click(screen.getByRole('combobox', { name: 'Category' }));
     await user.click(await screen.findByRole('option', { name: 'DINING' }));
@@ -174,7 +174,7 @@ describe('DashboardPage', () => {
   it('offers to clear filters only once one is set', async () => {
     const user = userEvent.setup();
     renderPage();
-    await screen.findByText('$8,959.49');
+    await screen.findByText('₹8,959.49');
 
     expect(screen.queryByRole('button', { name: 'Clear filters' })).not.toBeInTheDocument();
 
@@ -188,7 +188,7 @@ describe('DashboardPage', () => {
   it('steps between months with the arrows', async () => {
     const user = userEvent.setup();
     renderPage();
-    await screen.findByText('$8,959.49');
+    await screen.findByText('₹8,959.49');
 
     await user.click(screen.getByRole('button', { name: 'Previous month' }));
     await waitFor(() => expect(lastParams()).toMatchObject({ month: '2026-05' }));
@@ -201,7 +201,7 @@ describe('DashboardPage', () => {
       availableMonths: ['2026-05', '2026-06'],
     });
     renderPage();
-    await screen.findByText('$8,959.49');
+    await screen.findByText('₹8,959.49');
 
     expect(screen.getByRole('button', { name: 'Previous month' })).toBeDisabled();
     expect(screen.getByRole('button', { name: 'Next month' })).toBeEnabled();
@@ -210,7 +210,7 @@ describe('DashboardPage', () => {
   it('switches the time-series granularity', async () => {
     const user = userEvent.setup();
     renderPage();
-    await screen.findByText('$8,959.49');
+    await screen.findByText('₹8,959.49');
 
     await user.click(screen.getByRole('tab', { name: 'Weekly' }));
     await waitFor(() => expect(lastParams()).toMatchObject({ granularity: 'weekly' }));
@@ -219,7 +219,7 @@ describe('DashboardPage', () => {
   it('drills into a category from the table, scoped to the shown month', async () => {
     const user = userEvent.setup();
     renderPage();
-    await screen.findByText('$8,959.49');
+    await screen.findByText('₹8,959.49');
 
     await user.click(screen.getByRole('button', { name: 'Show HOUSING transactions' }));
 
@@ -229,13 +229,13 @@ describe('DashboardPage', () => {
         expect.objectContaining({ category: 'HOUSING', month: '2026-06' }),
       ),
     );
-    expect(await screen.findByText('1 transaction(s) in 2026-06 · $2,150.00')).toBeInTheDocument();
+    expect(await screen.findByText('1 transaction(s) in 2026-06 · ₹2,150.00')).toBeInTheDocument();
   });
 
   it('drills in from the chart legend too', async () => {
     const user = userEvent.setup();
     renderPage();
-    await screen.findByText('$8,959.49');
+    await screen.findByText('₹8,959.49');
 
     await user.click(await screen.findByRole('button', { name: 'donut: SHOPPING' }));
 

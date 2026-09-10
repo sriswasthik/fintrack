@@ -390,7 +390,7 @@ describe('§8 case 9 — peer-to-peer round trips', () => {
     const networks = new Set(
       [...planted('p2p-out'), ...planted('p2p-in')].map((t) => t.normalizedMerchant),
     );
-    networks.forEach((network) => expect(network).toMatch(/^(VENMO|CASH APP|ZELLE)$/));
+    networks.forEach((network) => expect(network).toMatch(/^(GPAY|PHONEPE|PAYTM WALLET)$/));
   });
 });
 

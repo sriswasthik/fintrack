@@ -9,6 +9,7 @@ import {
 } from 'recharts';
 
 import type { Granularity, SeriesPoint } from '@/lib/dashboard';
+import { formatINRCompact } from '@/lib/currency';
 
 /**
  * Spend over time — one series, so it takes the sequential hue rather than a
@@ -17,8 +18,6 @@ import type { Granularity, SeriesPoint } from '@/lib/dashboard';
  * Area rather than line because a single series over time reads as accumulation,
  * and the fill gives the eye the shape of the month at a glance.
  */
-const money = (n: number) =>
-  n.toLocaleString('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 });
 
 function formatBucket(iso: string, granularity: Granularity): string {
   const date = new Date(`${iso}T00:00:00Z`);
@@ -63,7 +62,7 @@ export function SpendOverTime({
             minTickGap={24}
           />
           <YAxis
-            tickFormatter={(value: number) => money(value)}
+            tickFormatter={(value: number) => formatINRCompact(value)}
             stroke="var(--chart-axis)"
             tickLine={false}
             axisLine={false}
@@ -78,7 +77,7 @@ export function SpendOverTime({
                 <div className="bg-popover text-popover-foreground rounded-md border px-3 py-2 text-xs shadow-md">
                   <div className="font-medium">{formatBucket(String(label), granularity)}</div>
                   <div className="text-muted-foreground tabular-nums">
-                    {money(Number(payload[0].value))}
+                    {formatINRCompact(Number(payload[0].value))}
                   </div>
                 </div>
               );

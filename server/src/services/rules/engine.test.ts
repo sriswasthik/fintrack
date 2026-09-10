@@ -19,7 +19,7 @@ function rule(overrides: Partial<EngineRule> = {}): EngineRule {
   ruleSeq += 1;
   return {
     id: `rule_${String(ruleSeq).padStart(3, '0')}`,
-    pattern: 'WHOLE FOODS',
+    pattern: 'RELIANCE FRESH',
     category: 'GROCERIES',
     priority: 300,
     userId: null,
@@ -32,7 +32,7 @@ function txn(overrides: Partial<EngineTransaction> & { id: string }): EngineTran
   return {
     accountId: 'acct_credit',
     date: '2026-04-10',
-    normalizedMerchant: 'WHOLE FOODS',
+    normalizedMerchant: 'RELIANCE FRESH',
     amount: 64.18,
     category: 'UNCATEGORIZED',
     confidence: 0,
@@ -62,7 +62,7 @@ describe('rule ordering and matching', () => {
     const transfer = rule({ pattern: 'CARD PAYMENT', category: 'TRANSFER', priority: 150 });
     const shopping = rule({ pattern: 'PAYMENT', category: 'SHOPPING', priority: 300 });
 
-    expect(matchRule('CHASE CARD PAYMENT', orderRules([shopping, transfer]))?.category).toBe(
+    expect(matchRule('HDFC CARD PAYMENT', orderRules([shopping, transfer]))?.category).toBe(
       'TRANSFER',
     );
   });
@@ -76,23 +76,23 @@ describe('rule ordering and matching', () => {
   });
 
   it('matches case-insensitively', () => {
-    expect(matchRule('whole foods', orderRules([rule()]))).not.toBeNull();
+    expect(matchRule('reliance fresh', orderRules([rule()]))).not.toBeNull();
   });
 
   it('treats a pattern as a regular expression', () => {
-    const anchored = rule({ pattern: '^TARGET$', category: 'SHOPPING' });
+    const anchored = rule({ pattern: '^FLIPKART$', category: 'SHOPPING' });
     const ordered = orderRules([anchored]);
 
-    expect(matchRule('TARGET', ordered)).not.toBeNull();
-    expect(matchRule('TARGET OPTICAL', ordered)).toBeNull();
+    expect(matchRule('FLIPKART', ordered)).not.toBeNull();
+    expect(matchRule('FLIPKART HEALTH', ordered)).toBeNull();
   });
 
   it('ignores a rule whose pattern is not a valid regular expression', () => {
     const broken = rule({ pattern: '([unclosed', category: 'SHOPPING' });
-    const good = rule({ pattern: 'WHOLE FOODS', category: 'GROCERIES' });
+    const good = rule({ pattern: 'RELIANCE FRESH', category: 'GROCERIES' });
 
-    expect(() => matchRule('WHOLE FOODS', orderRules([broken, good]))).not.toThrow();
-    expect(matchRule('WHOLE FOODS', orderRules([broken, good]))?.category).toBe('GROCERIES');
+    expect(() => matchRule('RELIANCE FRESH', orderRules([broken, good]))).not.toThrow();
+    expect(matchRule('RELIANCE FRESH', orderRules([broken, good]))?.category).toBe('GROCERIES');
   });
 });
 
@@ -149,13 +149,13 @@ describe('findTransferPairs (§8 case 1)', () => {
     id: 'out',
     accountId: 'acct_checking',
     amount: 1200,
-    normalizedMerchant: 'CHASE CARD PAYMENT',
+    normalizedMerchant: 'HDFC CARD PAYMENT',
   });
   const inn = txn({
     id: 'in',
     accountId: 'acct_credit',
     amount: -1200,
-    normalizedMerchant: 'CHASE CARD PAYMENT',
+    normalizedMerchant: 'HDFC CARD PAYMENT',
   });
 
   it('pairs equal and opposite amounts across two accounts', () => {
@@ -253,8 +253,8 @@ describe('findRefundLinks (§8 case 2)', () => {
     // A person-to-person round trip: money sent, then paid back by the same
     // network days later. Same account, same merchant, opposite amounts — it
     // looks exactly like a return, and is not one.
-    const sent = txn({ id: 'out', amount: 45, date: '2026-03-10', normalizedMerchant: 'VENMO' });
-    const back = txn({ id: 'back', amount: -45, date: '2026-03-13', normalizedMerchant: 'VENMO' });
+    const sent = txn({ id: 'out', amount: 45, date: '2026-03-10', normalizedMerchant: 'GPAY' });
+    const back = txn({ id: 'back', amount: -45, date: '2026-03-13', normalizedMerchant: 'GPAY' });
     const isTransfer = (id: string) => id === 'out' || id === 'back';
 
     expect(findRefundLinks([sent, back], isTransfer)).toEqual([]);
@@ -280,7 +280,7 @@ describe('runEngine', () => {
   const rules = orderRules([
     rule({ pattern: 'CARD PAYMENT', category: 'TRANSFER', priority: 150 }),
     rule({ pattern: '^ZARA$', category: 'SHOPPING', priority: 300 }),
-    rule({ pattern: '^VENMO$', category: 'TRANSFER', priority: 150 }),
+    rule({ pattern: '^GPAY$', category: 'TRANSFER', priority: 150 }),
   ]);
 
   it('lets a transfer pair override whatever the rules decided', () => {
@@ -321,14 +321,14 @@ describe('runEngine', () => {
         accountId: 'a',
         amount: 45,
         date: '2026-03-10',
-        normalizedMerchant: 'VENMO',
+        normalizedMerchant: 'GPAY',
       }),
       txn({
         id: 'back',
         accountId: 'a',
         amount: -45,
         date: '2026-03-13',
-        normalizedMerchant: 'VENMO',
+        normalizedMerchant: 'GPAY',
       }),
     ];
 
@@ -456,22 +456,22 @@ describe('the built-in rule set', () => {
       })),
     );
 
-    expect(matchRule('CHASE CARD PAYMENT', ordered)?.category).toBe('TRANSFER');
-    expect(matchRule('VENMO', ordered)?.category).toBe('TRANSFER');
-    expect(matchRule('ZELLE', ordered)?.category).toBe('TRANSFER');
+    expect(matchRule('HDFC CARD PAYMENT', ordered)?.category).toBe('TRANSFER');
+    expect(matchRule('GPAY', ordered)?.category).toBe('TRANSFER');
+    expect(matchRule('PAYTM WALLET', ordered)?.category).toBe('TRANSFER');
   });
 
   it.each([
-    ['WHOLE FOODS', 'GROCERIES'],
+    ['RELIANCE FRESH', 'GROCERIES'],
     ['STARBUCKS', 'DINING'],
     ['JOES COFFEE', 'DINING'],
     ['UBER', 'TRANSPORTATION'],
     ['NETFLIX', 'SUBSCRIPTIONS'],
     ['OAKWOOD PROPERTY MGMT', 'HOUSING'],
     ['LEMONADE INSURANCE', 'INSURANCE'],
-    ['DELTA AIR LINES', 'TRAVEL'],
+    ['INDIGO AIRLINES', 'TRAVEL'],
     ['FOREIGN TRANSACTION FEE', 'FEES_INTEREST'],
-    ['NORTHWIND LABS', 'INCOME'],
+    ['INFOSYS LTD', 'INCOME'],
   ])('categorizes %s as %s', (merchant, expected) => {
     const ordered = orderRules(
       DEFAULT_RULES.map((r, i) => ({
