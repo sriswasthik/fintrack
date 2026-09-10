@@ -5,6 +5,8 @@
  */
 import Papa from 'papaparse';
 
+import { formatINR } from '../src/utils/currency';
+
 import {
   ACCOUNTS,
   PENDING_FROM,
@@ -45,7 +47,7 @@ export function buildCsv(dataset = generateDataset()): string {
 // README
 // --------------------------------------------------------------------------
 
-const money = (n: number) => (n < 0 ? `-$${Math.abs(n).toFixed(2)}` : `$${n.toFixed(2)}`);
+const money = (n: number) => formatINR(n);
 const cell = (s: string) => s.replace(/\|/g, '\\|');
 const account = (t: GeneratedTransaction) => ACCOUNTS[t.account].name;
 
@@ -157,8 +159,8 @@ row references — they are regenerated for you.
 | Rows | ${dataset.length} |
 | Window | ${START_DATE} → ${REFERENCE_DATE} (${months.length} calendar months: ${months.join(', ')}) |
 | Accounts | ${[...accountCounts.entries()].map(([n, c]) => `${n} (${c})`).join(', ')} |
-| Total spend | $${spend.toFixed(2)} (excludes INCOME and TRANSFER, per §5) |
-| Total income | $${income.toFixed(2)} |
+| Total spend | ${formatINR(spend)} (excludes INCOME and TRANSFER, per §5) |
+| Total income | ${formatINR(income)} |
 
 Intended category mix (what a perfect categorizer would produce — the CSV itself
 carries no category column):
@@ -227,7 +229,7 @@ ${table(get('split-candidate'), (t) => (t.intendedSplits ?? []).map((s) => `${s.
 
 ${subsByMerchant.size} distinct subscriptions bill monthly. Two are special:
 
-* **NETFLIX** rises from $15.49 to $17.99 partway through — a price hike Phase 6
+* **NETFLIX** rises from ${formatINR(499)} to ${formatINR(649)} partway through — a price hike Phase 6
   must flag (rows ${get('subscription-price-change')
     .map((t) => t.row)
     .join(', ')}).

@@ -36,6 +36,13 @@ const PASS_THROUGH_PROCESSORS = new Set([
   'POS',
   'DONATION',
   'DD',
+  // Indian rails. Same idea: the wallet or gateway prints its own name in
+  // front of the merchant, and it is the merchant that matters.
+  'PAYTM',
+  'RAZ',
+  'RAZORPAY',
+  'BILLDESK',
+  'UPI',
 ]);
 
 /**
@@ -61,8 +68,6 @@ const TRAILING_NOISE = new Set([
   'LLC',
   'INTL',
   'INTERNATIONAL',
-  'HOTELS',
-  'OIL',
   'PO',
   'WIRELESS',
   'MEMBERSHIP',
@@ -86,6 +91,17 @@ const TRAILING_NOISE = new Set([
   'ADJUSTMENT',
   'FREELANCE',
   'INVOICE',
+  // Indian statements: what the bill was for, or which flavour of the plan,
+  // rather than who was billing.
+  'ETICKET',
+  'BROADBAND',
+  'ELECTRICITY',
+  'PREPAID',
+  'POSTPAID',
+  'RECHARGE',
+  'CONSULT',
+  'SALARY',
+  'SUPER',
 ]);
 
 /** Domain suffixes stripped from the end of a merchant token. */
@@ -108,6 +124,19 @@ const TRAILING_PLACES = new Set([
   'SHIBUYA',
   'SOHO',
   'TOKYO',
+  // Indian cities and localities, for the same reason: an outlet is not a brand.
+  'BENGALURU',
+  'BANGALORE',
+  'CHENNAI',
+  'DELHI',
+  'GURGAON',
+  'HYDERABAD',
+  'INDIRANAGAR',
+  'KOLKATA',
+  'MUMBAI',
+  'NOIDA',
+  'PUNE',
+  'INDIA',
 ]);
 
 /** Two-letter ISO country codes that appear as a trailing token on foreign charges. */
@@ -135,17 +164,20 @@ const COUNTRY_CODES = new Set([
  */
 const MERCHANT_ALIASES = new Map<string, string>([
   ['AMZN MKTP US', 'AMAZON MARKETPLACE'],
+  ['AMZN MKTP IN', 'AMAZON MARKETPLACE'],
   ['AMZN MKTP', 'AMAZON MARKETPLACE'],
   ['ETSYINC', 'ETSY'],
   ['STEAMGAMES', 'STEAM'],
   ['NYTIMES', 'NEW YORK TIMES'],
-  ['PAYMENT THANK YOU', 'CHASE CARD PAYMENT'],
+  ['PAYMENT THANK YOU', 'HDFC CARD PAYMENT'],
   ['APPLE.COM BILL ICLOUD', 'APPLE ICLOUD'],
   ['ADOBE CREATIVE CLOUD', 'ADOBE'],
   // Identity aliases: these would otherwise lose a meaningful trailing token.
   ['BOOKING.COM', 'BOOKING.COM'],
-  ['CHASE CARD PAYMENT', 'CHASE CARD PAYMENT'],
-  ['APPLE STORE', 'APPLE STORE'],
+  ['HDFC CARD PAYMENT', 'HDFC CARD PAYMENT'],
+  ['CROMA RETAIL', 'CROMA RETAIL'],
+  ['TAJ HOTELS', 'TAJ HOTELS'],
+  ['JIO FIBER', 'JIO FIBER'],
 ]);
 
 /**
@@ -162,10 +194,10 @@ const CARD_PAYMENT_WRAPPER =
 
 /** Merchants that always collapse to a single name regardless of what follows. */
 const MERCHANT_PREFIXES: [RegExp, string][] = [
-  [/^ZELLE (?:TO|FROM)\b/, 'ZELLE'],
-  [/^VENMO\b/, 'VENMO'],
-  [/^CASH APP\b/, 'CASH APP'],
-  [/^NORTHWIND LABS\b/, 'NORTHWIND LABS'],
+  [/^PAYTM WALLET (?:TO|FROM)\b/, 'PAYTM WALLET'],
+  [/^GPAY\b/, 'GPAY'],
+  [/^PHONEPE\b/, 'PHONEPE'],
+  [/^INFOSYS LTD\b/, 'INFOSYS LTD'],
 ];
 
 /** A token that is purely a store number, order id or other reference. */

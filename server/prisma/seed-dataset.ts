@@ -78,7 +78,7 @@ export async function seedSyntheticDataset(
       rawMerchant: t.rawMerchant,
       normalizedMerchant: t.normalizedMerchant,
       amount: t.amount.toFixed(2),
-      currency: 'USD',
+      currency: 'INR',
       // §8 case 12 rows keep the correction a human already made; everything
       // else is left for the categorization phases.
       ...(t.manualCategory

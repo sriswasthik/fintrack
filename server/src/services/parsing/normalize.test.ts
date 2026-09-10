@@ -38,7 +38,7 @@ describe('normalizeMerchant', () => {
       ['AMC THEATRES #0663', 'AMC THEATRES'],
       ['CHEVRON 0756461', 'CHEVRON'],
       ['DELTA AIR LINES 0062', 'DELTA AIR LINES'],
-      ['APPLE STORE #R412', 'APPLE STORE'],
+      ['CROMA RETAIL #R412', 'CROMA RETAIL'],
       // A reference in the middle of the descriptor, not just at the end.
       ['ZARA #482 SOHO', 'ZARA'],
       ['USPS PO 12230660', 'USPS'],
@@ -97,7 +97,7 @@ describe('normalizeMerchant', () => {
       ['NYTIMES*NYTIMES DIGITAL', 'NEW YORK TIMES'],
       ['APPLE.COM/BILL ICLOUD', 'APPLE ICLOUD'],
       ['ADOBE CREATIVE CLOUD', 'ADOBE'],
-      ['PAYMENT THANK YOU', 'CHASE CARD PAYMENT'],
+      ['PAYMENT THANK YOU', 'HDFC CARD PAYMENT'],
     ])('normalizes %s to %s', (raw, expected) => {
       expect(normalizeMerchant(raw)).toBe(expected);
     });
@@ -107,9 +107,9 @@ describe('normalizeMerchant', () => {
     it.each([
       ['VENMO PAYMENT 1039485', 'VENMO'],
       ['VENMO CASHOUT 1039912', 'VENMO'],
-      ['ZELLE TO SAM RIVERA', 'ZELLE'],
-      ['ZELLE FROM SAM RIVERA', 'ZELLE'],
-      ['ZELLE TO PRIYA N', 'ZELLE'],
+      ['PAYTM WALLET TO SAM R', 'PAYTM WALLET'],
+      ['PAYTM WALLET FROM SAM R', 'PAYTM WALLET'],
+      ['PAYTM WALLET TO PRIYA N', 'PAYTM WALLET'],
       ['CASH APP*CASHOUT', 'CASH APP'],
     ])('normalizes %s to %s', (raw, expected) => {
       expect(normalizeMerchant(raw)).toBe(expected);
@@ -120,7 +120,7 @@ describe('normalizeMerchant', () => {
     it('rewrites a card-payment descriptor to BANK CARD PAYMENT', () => {
       // If these lose the word PAYMENT, the rule that keeps a card payment out
       // of spend stops matching and the payment is counted as a purchase.
-      expect(normalizeMerchant('ONLINE PAYMENT TO CHASE CARD ...4021')).toBe('CHASE CARD PAYMENT');
+      expect(normalizeMerchant('ONLINE PAYMENT TO HDFC CARD ...4021')).toBe('HDFC CARD PAYMENT');
       expect(normalizeMerchant('PAYMENT TO CAPITAL ONE CARD XXXX1234')).toBe(
         'CAPITAL ONE CARD PAYMENT',
       );
@@ -128,8 +128,8 @@ describe('normalizeMerchant', () => {
     });
 
     it('treats masked account digits as the reference token they are', () => {
-      expect(normalizeMerchant('CHASE CARD ...4021')).toBe('CHASE CARD');
-      expect(normalizeMerchant('CHASE CARD XXXX4021')).toBe('CHASE CARD');
+      expect(normalizeMerchant('HDFC CARD ...4021')).toBe('HDFC CARD');
+      expect(normalizeMerchant('HDFC CARD XXXX4021')).toBe('HDFC CARD');
     });
   });
 
