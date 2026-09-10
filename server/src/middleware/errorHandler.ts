@@ -9,7 +9,7 @@ import type { ErrorRequestHandler, RequestHandler } from 'express';
 import { MulterError } from 'multer';
 import { ZodError } from 'zod';
 
-import { MAX_UPLOAD_BYTES } from './upload';
+import { MAX_PDF_BYTES, MAX_UPLOAD_BYTES, UnsupportedFileTypeError } from './upload';
 
 export class HttpError extends Error {
   constructor(
@@ -33,7 +33,7 @@ export const notFoundHandler: RequestHandler = (_req, res) => {
   res.status(404).json({ error: 'Not found' });
 };
 
-export const errorHandler: ErrorRequestHandler = (error, _req, res, _next) => {
+export const errorHandler: ErrorRequestHandler = (error, req, res, _next) => {
   if (error instanceof HttpError) {
     res.status(error.status).json({ error: error.message, details: error.details });
     return;
@@ -46,15 +46,18 @@ export const errorHandler: ErrorRequestHandler = (error, _req, res, _next) => {
 
   if (error instanceof MulterError) {
     const status = error.code === 'LIMIT_FILE_SIZE' ? 413 : 400;
+    // Multer's error does not carry the limit it tripped, and quoting the wrong
+    // one is worse than quoting none: the PDF routes allow a larger file.
+    const limit = req.path.startsWith('/statements/') ? MAX_PDF_BYTES : MAX_UPLOAD_BYTES;
     const message =
       error.code === 'LIMIT_FILE_SIZE'
-        ? `File is larger than the ${Math.round(MAX_UPLOAD_BYTES / 1024 / 1024)}MB limit`
+        ? `File is larger than the ${Math.round(limit / 1024 / 1024)}MB limit`
         : error.message;
     res.status(status).json({ error: message });
     return;
   }
 
-  if (error instanceof Error && error.message === 'Only .csv files can be uploaded') {
+  if (error instanceof UnsupportedFileTypeError) {
     res.status(400).json({ error: error.message });
     return;
   }

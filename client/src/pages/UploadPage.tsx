@@ -33,9 +33,15 @@ import {
   type Resolution,
   type UploadPreview,
 } from '@/lib/transactions';
+import { inspectStatement, isWrongPassword, parseStatement } from '@/lib/statements';
 
 const PREVIEW_LIMIT = 20;
 
+
+/** Chosen by extension rather than MIME type, which browsers disagree about. */
+function isPdf(file: File): boolean {
+  return /\.pdf$/i.test(file.name) || file.type === 'application/pdf';
+}
 
 function errorMessage(error: unknown): string {
   if (typeof error === 'object' && error !== null && 'response' in error) {
@@ -51,6 +57,10 @@ export function UploadPage() {
 
   const [accountId, setAccountId] = useState('');
   const [file, setFile] = useState<File | null>(null);
+  /** null until a PDF has been inspected; false means "no password needed". */
+  const [requiresPassword, setRequiresPassword] = useState<boolean | null>(null);
+  const [password, setPassword] = useState('');
+  const [inspectError, setInspectError] = useState<string | null>(null);
   const [preview, setPreview] = useState<UploadPreview | null>(null);
   const [needsMapping, setNeedsMapping] = useState<NeedsMapping | null>(null);
   const [resolutions, setResolutions] = useState<Record<number, Resolution>>({});
@@ -58,9 +68,43 @@ export function UploadPage() {
 
   const accounts = useQuery({ queryKey: ['accounts'], queryFn: fetchAccounts });
 
+  /**
+   * A PDF is inspected the moment it is chosen, and only then does a password
+   * field appear — and only if the file actually has one. The answer to "does
+   * this need a password?" is knowable without asking the user anything, so it
+   * is answered before they are asked anything.
+   */
+  const inspectMutation = useMutation({
+    mutationFn: (chosen: File) => inspectStatement(chosen),
+    onSuccess: (data) => setRequiresPassword(data.requiresPassword),
+    onError: (error) => {
+      setRequiresPassword(null);
+      setInspectError(errorMessage(error));
+    },
+  });
+
+  function chooseFile(chosen: File | null) {
+    setFile(chosen);
+    setPreview(null);
+    setNeedsMapping(null);
+    setResult(null);
+    setPassword('');
+    setRequiresPassword(null);
+    setInspectError(null);
+    uploadMutation.reset();
+
+    if (chosen && isPdf(chosen)) inspectMutation.mutate(chosen);
+  }
+
   const uploadMutation = useMutation({
     mutationFn: (input: { file: File; accountId: string; mapping?: ColumnMapping }) =>
-      uploadCsv(input),
+      isPdf(input.file)
+        ? parseStatement({
+            file: input.file,
+            accountId: input.accountId,
+            ...(password ? { password } : {}),
+          })
+        : uploadCsv(input),
     onSuccess: (data) => {
       setResult(null);
       if (data.status === 'needs-mapping') {
@@ -94,7 +138,15 @@ export function UploadPage() {
   const duplicates = useMemo(() => preview?.rows.filter((row) => row.duplicate) ?? [], [preview]);
   const skipCount = duplicates.filter((row) => resolutions[row.index] === 'skip').length;
 
-  const canUpload = Boolean(file && accountId) && !uploadMutation.isPending;
+  const pdfChosen = Boolean(file && isPdf(file));
+  // A PDF cannot be sent until it has been inspected, and an encrypted one
+  // cannot be sent without the password the inspection said it needs.
+  const pdfReady =
+    !pdfChosen ||
+    (requiresPassword === false) ||
+    (requiresPassword === true && password.trim().length > 0);
+  const canUpload =
+    Boolean(file && accountId) && pdfReady && !uploadMutation.isPending && !inspectMutation.isPending;
 
   function submitUpload(mapping?: ColumnMapping) {
     if (!file || !accountId) return;
@@ -106,7 +158,8 @@ export function UploadPage() {
       <div className="space-y-1">
         <h1 className="text-2xl font-semibold tracking-tight">Import transactions</h1>
         <p className="text-muted-foreground text-sm">
-          Upload a CSV export. Nothing is saved until you confirm the preview.
+          Upload a CSV export or a PDF statement. Nothing is saved until you confirm the
+          preview.
         </p>
       </div>
 
@@ -140,16 +193,16 @@ export function UploadPage() {
           </div>
 
           <div className="flex-1 space-y-2">
-            <label className="text-sm font-medium" htmlFor="csv">
-              CSV file
+            <label className="text-sm font-medium" htmlFor="statement">
+              CSV or PDF file
             </label>
             <Input
-              id="csv"
+              id="statement"
               ref={fileInputRef}
               type="file"
-              accept=".csv,text/csv"
-              aria-label="CSV file"
-              onChange={(event) => setFile(event.target.files?.[0] ?? null)}
+              accept=".csv,text/csv,.pdf,application/pdf"
+              aria-label="CSV or PDF file"
+              onChange={(event) => chooseFile(event.target.files?.[0] ?? null)}
             />
           </div>
 
@@ -157,6 +210,48 @@ export function UploadPage() {
             {uploadMutation.isPending ? 'Parsing…' : 'Upload'}
           </Button>
         </CardContent>
+
+        {pdfChosen && (
+          <CardContent className="pt-0">
+            {inspectMutation.isPending && (
+              <output aria-live="polite" className="text-muted-foreground text-sm">
+                Checking whether this statement needs a password…
+              </output>
+            )}
+
+            {requiresPassword === false && (
+              <p className="text-muted-foreground text-sm">
+                This statement is not password-protected.
+              </p>
+            )}
+
+            {requiresPassword === true && (
+              <div className="max-w-sm space-y-2">
+                <label className="text-sm font-medium" htmlFor="statement-password">
+                  Statement password
+                </label>
+                <Input
+                  id="statement-password"
+                  type="password"
+                  autoComplete="off"
+                  aria-label="Statement password"
+                  value={password}
+                  onChange={(event) => setPassword(event.target.value)}
+                  placeholder="Required to open this file"
+                />
+                <p className="text-muted-foreground text-xs">
+                  This file is encrypted. The password is used to open it and is never stored.
+                </p>
+              </div>
+            )}
+
+            {inspectError && (
+              <p role="alert" className="text-destructive text-sm">
+                {inspectError}
+              </p>
+            )}
+          </CardContent>
+        )}
       </Card>
 
       {accounts.isError && (
@@ -168,6 +263,8 @@ export function UploadPage() {
       {uploadMutation.isError && (
         <p role="alert" className="text-destructive text-sm">
           {errorMessage(uploadMutation.error)}
+          {isWrongPassword(uploadMutation.error) &&
+            ' Nothing was imported — check the password and upload again.'}
         </p>
       )}
 

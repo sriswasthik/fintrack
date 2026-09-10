@@ -5,6 +5,8 @@ import type { ReactNode } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { UploadPage } from '@/pages/UploadPage';
+import type * as StatementsModule from '@/lib/statements';
+import { inspectStatement, parseStatement } from '@/lib/statements';
 import {
   commitImport,
   fetchAccounts,
@@ -21,7 +23,14 @@ vi.mock('@/lib/transactions', () => ({
   commitImport: vi.fn(),
 }));
 
+vi.mock('@/lib/statements', async (importOriginal) => {
+  const actual = await importOriginal<typeof StatementsModule>();
+  return { ...actual, inspectStatement: vi.fn(), parseStatement: vi.fn() };
+});
+
 const fetchAccountsMock = vi.mocked(fetchAccounts);
+const inspectStatementMock = vi.mocked(inspectStatement);
+const parseStatementMock = vi.mocked(parseStatement);
 const uploadCsvMock = vi.mocked(uploadCsv);
 const commitImportMock = vi.mocked(commitImport);
 
@@ -87,7 +96,7 @@ async function chooseAccountAndFile(user: ReturnType<typeof userEvent.setup>) {
   const file = new File(['date,description,amount\n2026-03-01,X,1.00\n'], 'export.csv', {
     type: 'text/csv',
   });
-  await user.upload(screen.getByLabelText('CSV file'), file);
+  await user.upload(screen.getByLabelText('CSV or PDF file'), file);
 }
 
 beforeEach(() => {
@@ -212,5 +221,124 @@ describe('UploadPage', () => {
     await user.click(screen.getByRole('button', { name: 'Upload' }));
 
     expect(await screen.findByRole('alert')).toHaveTextContent('The uploaded file is empty');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// PDF statements — the password is asked for only when there is one to ask for
+// ---------------------------------------------------------------------------
+
+const pdf = (name = 'statement.pdf') =>
+  new File(['%PDF-1.4 pretend'], name, { type: 'application/pdf' });
+
+const PDF_PREVIEW: UploadPreview = { ...PREVIEW, fileName: 'statement.pdf', rows: [row(1)] };
+
+/** Selects an account and the given file, then waits for inspection to settle. */
+async function choosePdf(user: ReturnType<typeof userEvent.setup>, file = pdf()) {
+  await user.click(screen.getByLabelText('Account'));
+  await user.click(await screen.findByRole('option', { name: 'Everyday Checking' }));
+  await user.upload(screen.getByLabelText('CSV or PDF file'), file);
+}
+
+describe('PDF statements', () => {
+  beforeEach(() => {
+    inspectStatementMock.mockResolvedValue({ requiresPassword: false });
+    parseStatementMock.mockResolvedValue(PDF_PREVIEW);
+  });
+
+  it('inspects the file as soon as it is chosen', async () => {
+    const user = userEvent.setup();
+    renderPage();
+    await choosePdf(user);
+
+    await waitFor(() => expect(inspectStatementMock).toHaveBeenCalledOnce());
+    expect(inspectStatementMock.mock.calls[0][0].name).toBe('statement.pdf');
+  });
+
+  it('asks for no password when the file does not need one', async () => {
+    const user = userEvent.setup();
+    renderPage();
+    await choosePdf(user);
+
+    expect(await screen.findByText(/not password-protected/i)).toBeInTheDocument();
+    expect(screen.queryByLabelText('Statement password')).not.toBeInTheDocument();
+
+    // And it can be uploaded straight away, with no password sent.
+    await user.click(screen.getByRole('button', { name: 'Upload' }));
+    await waitFor(() => expect(parseStatementMock).toHaveBeenCalledOnce());
+    expect(parseStatementMock.mock.calls[0][0]).not.toHaveProperty('password');
+  });
+
+  it('reveals a password field only for an encrypted file', async () => {
+    inspectStatementMock.mockResolvedValue({ requiresPassword: true });
+    const user = userEvent.setup();
+    renderPage();
+    await choosePdf(user);
+
+    expect(await screen.findByLabelText('Statement password')).toBeInTheDocument();
+    // ...and will not let the file be sent until one is typed.
+    expect(screen.getByRole('button', { name: 'Upload' })).toBeDisabled();
+
+    await user.type(screen.getByLabelText('Statement password'), 'open-sesame');
+    expect(screen.getByRole('button', { name: 'Upload' })).toBeEnabled();
+
+    await user.click(screen.getByRole('button', { name: 'Upload' }));
+    await waitFor(() => expect(parseStatementMock).toHaveBeenCalledOnce());
+    expect(parseStatementMock.mock.calls[0][0].password).toBe('open-sesame');
+  });
+
+  it('says specifically that the password was wrong', async () => {
+    inspectStatementMock.mockResolvedValue({ requiresPassword: true });
+    parseStatementMock.mockRejectedValue({
+      response: {
+        data: {
+          error: 'That password did not open the statement. Check it and try again.',
+          details: { reason: 'incorrect-password' },
+        },
+      },
+    });
+
+    const user = userEvent.setup();
+    renderPage();
+    await choosePdf(user);
+    await user.type(await screen.findByLabelText('Statement password'), 'wrong');
+    await user.click(screen.getByRole('button', { name: 'Upload' }));
+
+    const alert = await screen.findByRole('alert');
+    expect(alert).toHaveTextContent(/that password did not open the statement/i);
+    // The distinction that matters: not "this file needs a password".
+    expect(alert).not.toHaveTextContent(/is password-protected/i);
+    expect(alert).toHaveTextContent(/nothing was imported/i);
+  });
+
+  it('leaves a CSV on the CSV path, with no inspection at all', async () => {
+    const user = userEvent.setup();
+    renderPage();
+    await user.click(screen.getByLabelText('Account'));
+    await user.click(await screen.findByRole('option', { name: 'Everyday Checking' }));
+    await user.upload(
+      screen.getByLabelText('CSV or PDF file'),
+      new File(['date,description,amount'], 'export.csv', { type: 'text/csv' }),
+    );
+
+    await user.click(screen.getByRole('button', { name: 'Upload' }));
+
+    await waitFor(() => expect(uploadCsvMock).toHaveBeenCalledOnce());
+    expect(inspectStatementMock).not.toHaveBeenCalled();
+    expect(parseStatementMock).not.toHaveBeenCalled();
+  });
+
+  it('forgets the password when a different file is chosen', async () => {
+    inspectStatementMock.mockResolvedValue({ requiresPassword: true });
+    const user = userEvent.setup();
+    renderPage();
+    await choosePdf(user);
+    await user.type(await screen.findByLabelText('Statement password'), 'first-file-password');
+
+    inspectStatementMock.mockResolvedValue({ requiresPassword: false });
+    await user.upload(screen.getByLabelText('CSV or PDF file'), pdf('another.pdf'));
+
+    expect(await screen.findByText(/not password-protected/i)).toBeInTheDocument();
+    expect(screen.queryByLabelText('Statement password')).not.toBeInTheDocument();
   });
 });
