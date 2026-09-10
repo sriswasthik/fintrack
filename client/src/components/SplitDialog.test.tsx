@@ -22,7 +22,7 @@ const TRANSACTION: Transaction = {
   rawMerchant: 'TARGET 0002341',
   normalizedMerchant: 'TARGET',
   amount: 187.43,
-  currency: 'USD',
+  currency: 'INR',
   category: 'SHOPPING',
   confidence: 1,
   source: 'RULE',
@@ -63,7 +63,7 @@ describe('SplitDialog', () => {
 
     expect(await screen.findByText('Split this transaction')).toBeInTheDocument();
     expect(screen.getByLabelText('Amount for part 1')).toHaveValue('187.43');
-    expect(screen.getByRole('status')).toHaveTextContent('Allocated $187.43 of $187.43');
+    expect(screen.getByRole('status')).toHaveTextContent('Allocated ₹187.43 of ₹187.43');
   });
 
   it('shows what is left to allocate while the parts do not sum', async () => {
@@ -72,7 +72,7 @@ describe('SplitDialog', () => {
 
     await setAmount(user, 'Amount for part 1', '96.40');
 
-    expect(screen.getByRole('status')).toHaveTextContent('$91.03 left to allocate');
+    expect(screen.getByRole('status')).toHaveTextContent('₹91.03 left to allocate');
     expect(screen.getByRole('button', { name: 'Save split' })).toBeDisabled();
   });
 
@@ -82,7 +82,7 @@ describe('SplitDialog', () => {
 
     await setAmount(user, 'Amount for part 2', '50');
 
-    expect(screen.getByRole('status')).toHaveTextContent('$50.00 over the total');
+    expect(screen.getByRole('status')).toHaveTextContent('₹50.00 over the total');
     expect(screen.getByRole('button', { name: 'Save split' })).toBeDisabled();
   });
 
@@ -103,7 +103,7 @@ describe('SplitDialog', () => {
     await setAmount(user, 'Amount for part 1', '96.40');
     await setAmount(user, 'Amount for part 2', '91.03');
 
-    expect(screen.getByRole('status')).toHaveTextContent('Allocated $187.43 of $187.43');
+    expect(screen.getByRole('status')).toHaveTextContent('Allocated ₹187.43 of ₹187.43');
     expect(screen.getByRole('button', { name: 'Save split' })).toBeEnabled();
   });
 

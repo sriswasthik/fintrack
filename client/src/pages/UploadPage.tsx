@@ -21,6 +21,7 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { formatINR } from '@/lib/currency';
 import {
   commitImport,
   fetchAccounts,
@@ -35,8 +36,6 @@ import {
 
 const PREVIEW_LIMIT = 20;
 
-const money = (amount: number) =>
-  amount.toLocaleString('en-US', { style: 'currency', currency: 'USD' });
 
 function errorMessage(error: unknown): string {
   if (typeof error === 'object' && error !== null && 'response' in error) {
@@ -300,7 +299,7 @@ function PreviewTable({
                 {row.description}
               </TableCell>
               <TableCell className="text-muted-foreground">{row.normalizedMerchant}</TableCell>
-              <TableCell className="text-right tabular-nums">{money(row.amount)}</TableCell>
+              <TableCell className="text-right tabular-nums">{formatINR(row.amount)}</TableCell>
               <TableCell>
                 {row.duplicate ? (
                   <div className="flex items-center gap-2">

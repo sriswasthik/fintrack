@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { formatINR } from '@/lib/currency';
 import {
   Select,
   SelectContent,
@@ -27,8 +28,6 @@ import {
   type Transaction,
 } from '@/lib/transactions';
 
-const money = (amount: number) =>
-  amount.toLocaleString('en-US', { style: 'currency', currency: 'USD' });
 
 function errorMessage(error: unknown): string {
   if (typeof error === 'object' && error !== null && 'response' in error) {
@@ -173,7 +172,7 @@ function ReviewRow({
           {transaction.description}
         </div>
       </TableCell>
-      <TableCell className="text-right tabular-nums">{money(transaction.amount)}</TableCell>
+      <TableCell className="text-right tabular-nums">{formatINR(transaction.amount)}</TableCell>
       <TableCell>
         {suggestion ? (
           <div className="flex flex-col gap-1">

@@ -28,10 +28,8 @@ import {
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { fetchDashboard, type Granularity } from '@/lib/dashboard';
 import { CATEGORIES, fetchAccounts, type Category } from '@/lib/transactions';
+import { formatINR, formatINRCompact } from '@/lib/currency';
 
-const money = (n: number) => n.toLocaleString('en-US', { style: 'currency', currency: 'USD' });
-const compactMoney = (n: number) =>
-  n.toLocaleString('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 });
 
 function monthLabel(month: string): string {
   const [year, index] = month.split('-').map(Number);
@@ -191,20 +189,20 @@ export function DashboardPage() {
           <section className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
             <StatTile
               label="Spend"
-              value={data ? money(data.totals.spend) : '—'}
+              value={data ? formatINR(data.totals.spend) : '—'}
               delta={data?.deltas.spend}
-              hint={data ? `vs ${compactMoney(data.previous.spend)}` : undefined}
+              hint={data ? `vs ${formatINRCompact(data.previous.spend)}` : undefined}
             />
             <StatTile
               label="Income"
-              value={data ? money(data.totals.income) : '—'}
+              value={data ? formatINR(data.totals.income) : '—'}
               delta={data?.deltas.income}
               riseIsGood
-              hint={data ? `vs ${compactMoney(data.previous.income)}` : undefined}
+              hint={data ? `vs ${formatINRCompact(data.previous.income)}` : undefined}
             />
             <StatTile
               label="Net"
-              value={data ? money(data.totals.net) : '—'}
+              value={data ? formatINR(data.totals.net) : '—'}
               hint="income minus spend"
             />
             <StatTile
@@ -279,7 +277,7 @@ export function DashboardPage() {
                           {merchant.merchant}
                         </TableCell>
                         <TableCell className="text-right tabular-nums">
-                          {money(merchant.amount)}
+                          {formatINR(merchant.amount)}
                         </TableCell>
                         <TableCell className="text-muted-foreground text-right tabular-nums">
                           {merchant.transactions}
@@ -325,7 +323,7 @@ export function DashboardPage() {
                           </button>
                         </TableCell>
                         <TableCell className="text-right tabular-nums">
-                          {money(row.amount)}
+                          {formatINR(row.amount)}
                         </TableCell>
                         <TableCell className="text-muted-foreground text-right tabular-nums">
                           {row.share > 0 ? `${row.share}%` : '—'}

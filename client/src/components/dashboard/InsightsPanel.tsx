@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { useAuth } from '@/context/auth-context';
+import { formatINR } from '@/lib/currency';
 import {
   dismissInsight,
   fetchInsights,
@@ -39,7 +40,6 @@ const SEVERITY: Record<AnomalySeverity, { label: string; rail: string }> = {
   LOW: { label: 'Low', rail: 'bg-[var(--chart-axis)]' },
 };
 
-const money = (n: number) => n.toLocaleString('en-US', { style: 'currency', currency: 'USD' });
 
 function InsightRow({
   insight,
@@ -65,7 +65,7 @@ function InsightRow({
         {insight.transaction && (
           <p className="text-muted-foreground text-xs tabular-nums">
             {insight.transaction.date} · {insight.transaction.description} ·{' '}
-            {money(insight.transaction.amount)}
+            {formatINR(insight.transaction.amount)}
           </p>
         )}
       </div>
@@ -88,7 +88,7 @@ function InsightRow({
 /**
  * The insights panel.
  *
- * Sits directly under the headline numbers, because a $3,299 charge you did not
+ * Sits directly under the headline numbers, because a ₹79,900 charge you did not
  * expect matters more than any of the charts below it — and disappears into a
  * single quiet line when there is nothing to say, which is most months.
  */

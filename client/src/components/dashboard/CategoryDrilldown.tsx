@@ -17,8 +17,8 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { fetchTransactions, type Category } from '@/lib/transactions';
+import { formatINR } from '@/lib/currency';
 
-const money = (n: number) => n.toLocaleString('en-US', { style: 'currency', currency: 'USD' });
 
 /**
  * The transactions behind one number on the dashboard.
@@ -61,7 +61,7 @@ export function CategoryDrilldown({
           <DialogDescription>
             {query.isPending
               ? 'Loading…'
-              : `${query.data?.total ?? 0} transaction(s)${month ? ` in ${month}` : ''} · ${money(total)}`}
+              : `${query.data?.total ?? 0} transaction(s)${month ? ` in ${month}` : ''} · ${formatINR(total)}`}
           </DialogDescription>
         </DialogHeader>
 
@@ -88,7 +88,7 @@ export function CategoryDrilldown({
                     </div>
                   </TableCell>
                   <TableCell className="text-right tabular-nums">
-                    {money(transaction.amount)}
+                    {formatINR(transaction.amount)}
                   </TableCell>
                 </TableRow>
               ))}

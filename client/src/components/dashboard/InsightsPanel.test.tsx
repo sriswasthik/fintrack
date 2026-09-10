@@ -35,7 +35,7 @@ const SPIKE: Insight = {
   severity: 'HIGH',
   month: '2026-05',
   explanation:
-    'SHOPPING came to $4,917.40 this month, 262% above the $1,358.53 typical of the previous 2 months ($3,558.87 more than usual).',
+    'SHOPPING came to ₹4,917.40 this month, 262% above the ₹1,358.53 typical of the previous 2 months (₹3,558.87 more than usual).',
   transactionId: null,
   createdAt: '2026-09-08T00:00:00.000Z',
   transaction: null,
@@ -46,14 +46,14 @@ const LAPTOP: Insight = {
   type: 'UNUSUAL_AMOUNT',
   severity: 'MEDIUM',
   month: '2026-05',
-  explanation: '$3,299.00 at APPLE STORE is unusually large for SHOPPING.',
+  explanation: '₹3,299.00 at CROMA RETAIL is unusually large for SHOPPING.',
   transactionId: 'txn_1',
   createdAt: '2026-09-08T00:00:00.000Z',
   transaction: {
     id: 'txn_1',
     date: '2026-05-16',
-    description: 'APPLE STORE #R412',
-    merchant: 'APPLE STORE',
+    description: 'CROMA RETAIL #R412',
+    merchant: 'CROMA RETAIL',
     amount: 3299,
     category: 'SHOPPING',
   },
@@ -90,7 +90,7 @@ describe('InsightsPanel', () => {
   it('shows the transaction behind a flag that has one', async () => {
     renderPanel();
     expect(
-      await screen.findByText('2026-05-16 · APPLE STORE #R412 · $3,299.00'),
+      await screen.findByText('2026-05-16 · CROMA RETAIL #R412 · ₹3,299.00'),
     ).toBeInTheDocument();
   });
 

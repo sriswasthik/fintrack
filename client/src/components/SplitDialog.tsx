@@ -12,6 +12,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
+import { formatINR } from '@/lib/currency';
 import {
   Select,
   SelectContent,
@@ -27,8 +28,6 @@ import {
   type Transaction,
 } from '@/lib/transactions';
 
-const money = (amount: number) =>
-  amount.toLocaleString('en-US', { style: 'currency', currency: 'USD' });
 
 /** Amounts are compared in whole cents, exactly as the server does. */
 const cents = (amount: number) => Math.round(amount * 100);
@@ -134,7 +133,7 @@ function SplitForm({
         <DialogTitle>Split this transaction</DialogTitle>
         <DialogDescription>
           <span className="font-mono">{transaction.description}</span> · {transaction.date} ·{' '}
-          {money(transaction.amount)}
+          {formatINR(transaction.amount)}
         </DialogDescription>
       </DialogHeader>
 
@@ -210,8 +209,8 @@ function SplitForm({
             className={balanced ? 'text-muted-foreground' : 'text-destructive font-medium'}
           >
             {balanced
-              ? `Allocated ${money(allocated)} of ${money(total)}`
-              : `${money(Math.abs(remainder))} ${remainder > 0 ? 'left to allocate' : 'over the total'}`}
+              ? `Allocated ${formatINR(allocated)} of ${formatINR(total)}`
+              : `${formatINR(Math.abs(remainder))} ${remainder > 0 ? 'left to allocate' : 'over the total'}`}
           </span>
         </div>
 
