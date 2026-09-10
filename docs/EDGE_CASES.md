@@ -146,7 +146,7 @@ the two are not read as duplicates of each other.
 
 ## 8. Ambiguous and processor-mangled merchant strings
 
-**Expected:** `SQ *JOES COFFEE`, `TST* THE HALL` and `PAYPAL *STEAMGAMES`
+**Expected:** `PAYTM*CHAI POINT`, `TST* THE ADDA` and `PAYPAL *STEAMGAMES`
 reduce to the same key a clean descriptor would, so the rule engine and the
 merchant cache see one merchant. What genuinely cannot be decided from the
 string is left `UNCATEGORIZED` rather than guessed.
@@ -191,7 +191,7 @@ quietly redefine "normal" for its category and mask what comes after it.
 | `server/src/services/edge-cases.test.ts`           | still finds the anomalies in the months after it               |
 | `server/src/services/anomalies/statistics.test.ts` | is not dragged upwards by the outlier it is meant to catch     |
 | `server/src/services/anomalies/detect.test.ts`     | uses a median baseline, so one huge month cannot hide the next |
-| `server/src/services/anomalies/detect.test.ts`     | rates the $3,299 laptop more severely than the $1,842 flight   |
+| `server/src/services/anomalies/detect.test.ts`     | rates the ₹79,900 phone more severely than the ₹24,500 flight   |
 
 **Status:** covered.
 

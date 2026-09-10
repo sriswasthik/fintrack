@@ -15,9 +15,9 @@ moves them immediately.
 
 | Metric | Result |
 | --- | --- |
-| **Auto-categorized correctly** | **97.1%** (681 / 701) |
+| **Auto-categorized correctly** | **96.6%** (677 / 701) |
 | Miscategorized | 0.0% (0) |
-| Left for review | 2.9% (20) |
+| Left for review | 3.4% (24) |
 | Planted anomalies detected | 4 / 4 |
 | Monthly bills identified | 13 / 13 |
 | Everyday merchants misread as recurring | 0 / 69 |
@@ -28,14 +28,15 @@ The denominator excludes the 3 rows that arrive already corrected by a human (§
 gets right; the residual is rows it declines to guess on, which land in the
 review queue exactly as §7 requires.
 
-## Where the remaining 20 go
+## Where the remaining 24 go
 
 | Merchant | Rows | Truth | Why it is not a rule |
 | --- | --- | --- | --- |
-| `THE HALL` | 20 | DINING | Undecidable from the string alone |
+| `THE ADDA` | 20 | DINING | Undecidable from the string alone |
+| `FERNS N PETALS` | 4 | GIFTS_DONATIONS | Undecidable from the string alone |
 
 These are the ambiguous tail the LLM fallback (Phase 4) and the review queue
-exist for. One merchant-name rule would clear them and take the headline
+exist for. 2 merchant-name rules would clear them and take the headline
 to 100%, and it would mean nothing: that is memorising the test set, not
 categorizing.
 
@@ -55,7 +56,7 @@ categorizing.
 | INCOME | 21 | 21 | 100.0% |
 | UTILITIES | 19 | 19 | 100.0% |
 | BUSINESS | 14 | 14 | 100.0% |
-| GIFTS_DONATIONS | 11 | 11 | 100.0% |
+| GIFTS_DONATIONS | 11 | 7 | 63.6% |
 | PERSONAL_CARE | 10 | 10 | 100.0% |
 | HOUSING | 7 | 7 | 100.0% |
 | INSURANCE | 7 | 7 | 100.0% |
@@ -69,10 +70,10 @@ Every anomaly the generator planted:
 
 | Planted | Kind | Detected |
 | --- | --- | --- |
-| APPLE STORE $3299.00 (2026-05-16) | large one-off | yes |
-| DELTA AIR LINES $1842.60 (2026-07-07) | large one-off | yes |
-| NETFLIX $15.49 → $17.99 (2026-06-17) | subscription price change | yes |
-| DISNEY PLUS from 2026-07-14 | new recurring charge | yes |
+| CROMA RETAIL ₹79,900.00 (2026-05-16) | large one-off | yes |
+| INDIGO AIRLINES ₹24,500.00 (2026-07-07) | large one-off | yes |
+| NETFLIX ₹499.00 → ₹649.00 (2026-06-17) | subscription price change | yes |
+| HOTSTAR from 2026-07-14 | new recurring charge | yes |
 
 9 flags were raised across 7 months, of which 5 trace to a planted edge case (55.6%). The other 4 are listed below rather than counted as errors. The detectors are deterministic,
 so every flag is statistically true by construction — whether an unplanted one
@@ -81,10 +82,10 @@ one this script can make for anyone.
 
 | Month | Type | Severity | Explanation |
 | --- | --- | --- | --- |
-| 2026-06 | CATEGORY_SPEND_SPIKE | HIGH | GIFTS_DONATIONS came to $432.47 this month, 367% above the $92.60 typical of the previous 3 months ($339.87 more than usual). |
-| 2026-07 | CATEGORY_SPEND_SPIKE | MEDIUM | BUSINESS came to $549.51 this month, 106% above the $266.44 typical of the previous 4 months ($283.07 more than usual). |
-| 2026-07 | UNUSUAL_AMOUNT | LOW | $264.40 at CATERING CO is unusually large for BUSINESS. Most BUSINESS charges are under $117.77 (2.2x that, 2.9 standard deviations above average). |
-| 2026-08 | CATEGORY_SPEND_SPIKE | MEDIUM | GIFTS_DONATIONS came to $301.49 this month, 109% above the $144.13 typical of the previous 4 months ($157.36 more than usual). |
+| 2026-06 | UNUSUAL_AMOUNT | MEDIUM | ₹11,100.00 at EL CORTE INGLES is unusually large for SHOPPING. Most SHOPPING charges are under ₹3,429.53 (3.2x that, 0.7 standard deviations above average). |
+| 2026-06 | CATEGORY_SPEND_SPIKE | LOW | SHOPPING came to ₹52,718.08 this month, 64% above the ₹32,210.05 typical of the previous 3 months (₹20,508.03 more than usual). |
+| 2026-07 | CATEGORY_SPEND_SPIKE | MEDIUM | BUSINESS came to ₹10,766.64 this month, 165% above the ₹4,058.62 typical of the previous 4 months (₹6,708.02 more than usual). |
+| 2026-07 | UNUSUAL_AMOUNT | MEDIUM | ₹6,400.00 at CATERING CO is unusually large for BUSINESS. Most BUSINESS charges are under ₹1,926.56 (3.3x that, 3.2 standard deviations above average). |
 
 ### Not crying wolf
 
