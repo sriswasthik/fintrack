@@ -21,10 +21,11 @@
  *   2. a business word in the name (STORE, TRADERS, PVT LTD)
  *   3. a merchant a built-in rule already recognises
  *   4. a bare mobile number as the UPI handle — how a person's address is made
- *   5. a title-cased personal name of two or three words
+ *   5. the name came out of a wallet transfer addressed to an individual
+ *   6. a title-cased personal name of two or three words
  *
- * Order matters at 1-3 against 5: "Reliance Fresh" is two title-cased words and
- * is not a person.
+ * Order matters at 1-3 against 5 and 6: "Reliance Fresh" is two title-cased
+ * words and is not a person, and a wallet can pay a shop as easily as a friend.
  */
 import { normalizeMerchant } from '../parsing/normalize';
 import { parseVpa } from '../parsing/upi';
@@ -201,6 +202,16 @@ export interface CounterpartyInput {
   upiVpa?: string | null;
   /** The normalized merchant key, used to recognise a known brand. */
   normalizedMerchant?: string | null;
+  /**
+   * True when the name was lifted out of a wallet or P2P narration addressed to
+   * an individual — `PAYTM WALLET TO SAM R`, `PHONEPE*ARJUN M`.
+   *
+   * A real signal rather than a convenience: a rail only prints a name in that
+   * position when a human typed one, and it survives the upper-casing that
+   * destroys every other clue a name gives. It ranks below the business signals
+   * because a wallet can pay a shop as easily as a friend.
+   */
+  viaPersonToPersonRail?: boolean;
 }
 
 export interface ClassifyOptions {
@@ -245,9 +256,21 @@ export function classifyCounterparty(
   }
 
   // 3. A merchant the rule set already knows by name.
-  const merchantKey = input.normalizedMerchant?.trim() || (name ? normalizeMerchant(name) : '');
-  if (merchantKey && known(merchantKey)) {
-    return { type: 'BUSINESS', reason: `${merchantKey} is a recognized merchant`, display };
+  //
+  //    Both candidates are tried. On `PAYTM WALLET TO SWIGGY` the merchant key
+  //    is PAYTM WALLET — the rail, which no brand rule names — while the name
+  //    lifted out of the narration is SWIGGY, which every brand rule does. A
+  //    wallet can pay a shop, and checking only the key called that shop a
+  //    person.
+  const candidates = [
+    input.normalizedMerchant?.trim(),
+    name ? normalizeMerchant(name) : '',
+    display ? normalizeMerchant(display) : '',
+  ].filter((candidate): candidate is string => Boolean(candidate));
+
+  const recognized = candidates.find((candidate) => known(candidate));
+  if (recognized) {
+    return { type: 'BUSINESS', reason: `${recognized} is a recognized merchant`, display };
   }
 
   // 4. A bare mobile number as the handle. Businesses are issued named
@@ -256,7 +279,14 @@ export function classifyCounterparty(
     return { type: 'PERSON', reason: 'UPI handle is a mobile number', display };
   }
 
-  // 5. A capitalised personal name — from the counterparty string, or from a
+  // 5. A wallet transfer that named an individual. This is what rescues
+  //    "PAYTM WALLET TO SAM R", where the bank's upper-casing has already
+  //    destroyed the capitalisation step 6 looks for.
+  if (input.viaPersonToPersonRail) {
+    return { type: 'PERSON', reason: 'Named in a person-to-person wallet transfer', display };
+  }
+
+  // 6. A capitalised personal name — from the counterparty string, or from a
   //    `firstname.lastname` handle once its separators are opened out.
   if (name && looksLikePersonalName(name)) {
     return { type: 'PERSON', reason: 'Reads as a personal name', display };
