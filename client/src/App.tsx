@@ -9,6 +9,7 @@ import { HomePage } from '@/pages/HomePage';
 import { LoginPage, RegisterPage } from '@/pages/AuthPage';
 import { ReviewPage } from '@/pages/ReviewPage';
 import { SummaryPage } from '@/pages/SummaryPage';
+import { PayeesPage } from '@/pages/PayeesPage';
 import { TransactionsPage } from '@/pages/TransactionsPage';
 import { UploadPage } from '@/pages/UploadPage';
 
@@ -21,6 +22,7 @@ const NAV = [
   { to: '/dashboard', label: 'Dashboard' },
   { to: '/upload', label: 'Import', writes: true },
   { to: '/transactions', label: 'Transactions' },
+  { to: '/payees', label: 'People & Businesses' },
   { to: '/summary', label: 'Summary' },
   { to: '/review', label: 'Review', writes: true },
 ];
@@ -95,6 +97,7 @@ export function App() {
         <Route path="/dashboard" element={protect(<DashboardPage />)} />
         <Route path="/upload" element={protect(<UploadPage />, true)} />
         <Route path="/transactions" element={protect(<TransactionsPage />)} />
+        <Route path="/payees" element={protect(<PayeesPage />)} />
         <Route path="/summary" element={protect(<SummaryPage />)} />
         <Route path="/review" element={protect(<ReviewPage />, true)} />
       </Routes>

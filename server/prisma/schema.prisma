@@ -99,6 +99,7 @@ model User {
   anomalyFlags     AnomalyFlag[]
   monthlySummaries MonthlySummary[]
   categoryOverrides CategoryOverride[]
+  payees            Payee[]
 }
 
 /// Long-lived refresh tokens, stored hashed. Issued in Phase 9.
@@ -193,6 +194,12 @@ model Transaction {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  /// The other party, resolved to a running ledger entry (Phase 15). Null until
+  /// resolution has run, and null forever for a line with no counterparty worth
+  /// keeping — a bank fee, an ATM withdrawal.
+  payeeId String?
+  payee   Payee?  @relation(fields: [payeeId], references: [id], onDelete: SetNull)
+
   splits       Split[]
   anomalyFlags AnomalyFlag[]
   overrides    CategoryOverride[]
@@ -266,6 +273,57 @@ model Rule {
 
   @@index([userId])
   @@index([pattern])
+}
+
+/// Whether a payee is a human being or a business.
+///
+/// Phase 14's classifier answers PERSON, BUSINESS *or* UNKNOWN, and UNKNOWN is
+/// its commonest honest answer on an ALL-CAPS bank narration. This enum has no
+/// UNKNOWN because the Phase 15 brief specifies two values, so an unclassified
+/// payee is stored BUSINESS — see `services/payees/resolve.ts`, which is the
+/// one place that collapse happens.
+enum PayeeType {
+  PERSON
+  BUSINESS
+}
+
+/// A counterparty the user has transacted with more than once.
+///
+/// The point of the model is the *running total*: "how much have I paid Ramesh
+/// and how much has he paid me" is a question about a person across months, and
+/// a transaction list sorted by date can never answer it. Aggregates are
+/// deliberately NOT stored here — they are computed per request from the
+/// transactions, so they can never disagree with the rows they summarise.
+model Payee {
+  id     String @id @default(cuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  /// The name as a person should read it: the counterparty a UPI export named,
+  /// or the name lifted out of a narration, with any `@bank` suffix stripped.
+  displayName String
+
+  /// The UPI address, when one has ever been seen for this payee. The strongest
+  /// identity there is — two people are called Ramesh Kumar, but
+  /// `rameshkumar@ybl` is one account — so it is matched on before the name.
+  upiVpa String?
+
+  /// The mobile number, when the UPI handle was one.
+  phone String?
+
+  type PayeeType
+
+  createdAt DateTime @default(now())
+
+  transactions Transaction[]
+
+  @@index([userId])
+  /// Name matching is scoped to the user and case-insensitive, so the lookup is
+  /// on the lower-cased name; Postgres needs the expression index to use it.
+  @@index([userId, displayName])
+  /// One payee per address per user. Partial by nature: Postgres treats NULLs as
+  /// distinct, so the many payees with no address never collide with each other.
+  @@unique([userId, upiVpa])
 }
 
 /// Memoizes every LLM categorization decision so the same merchant is never

@@ -10,6 +10,7 @@ import { authRouter } from './routes/auth';
 import { dashboardRouter } from './routes/dashboard';
 import { healthRouter } from './routes/health';
 import { insightsRouter } from './routes/insights';
+import { payeesRouter } from './routes/payees';
 import { statementsRouter } from './routes/statements';
 import { summaryRouter } from './routes/summary';
 import { transactionsRouter } from './routes/transactions';
@@ -51,6 +52,7 @@ export function createApp() {
   app.use('/api', session, accountsRouter);
   app.use('/api', session, dashboardRouter);
   app.use('/api', session, insightsRouter);
+  app.use('/api', session, payeesRouter);
   app.use('/api', session, statementsRouter);
   app.use('/api', session, summaryRouter);
   app.use('/api', session, transactionsRouter);
