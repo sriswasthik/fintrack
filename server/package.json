@@ -18,6 +18,7 @@
     "demo:seed": "tsx scripts/seed-demo.ts",
     "test-data:export": "tsx scripts/export-test-data.ts",
     "test-data:pdf": "tsx scripts/export-pdf-fixtures.ts",
+    "test-data:banks": "tsx scripts/export-bank-fixtures.ts",
     "rules:apply": "tsx scripts/apply-rules.ts",
     "eval:categorize": "tsx scripts/eval-categorize.ts",
     "llm:apply": "tsx scripts/apply-llm.ts",
