@@ -53,11 +53,11 @@ export type GenericHeader = (typeof GENERIC_HEADERS)[number];
 
 /** What a header cell might be called on a real statement. */
 const HEADER_PATTERNS: Record<GenericHeader, RegExp> = {
-  date: /^(txn\s*)?(value\s*)?date$/i,
+  date: /^(txn|tran|transaction|value|post(ing)?)?\s*date$/i,
   narration: /^(narration|particulars|description|details|transaction\s*details)$/i,
   reference: /^(reference|reference\s*no\.?|ref\.?\s*no\.?|cheque\s*no\.?|chq\.?\s*no\.?)$/i,
-  debit: /^(debit|withdrawal|withdrawals?\s*\(dr\)|dr)$/i,
-  credit: /^(credit|deposit|deposits?\s*\(cr\)|cr)$/i,
+  debit: /^(debits?|withdrawals?(\s*(amt\.?|amount|\(dr\)))?|dr)$/i,
+  credit: /^(credits?|deposits?(\s*(amt\.?|amount|\(cr\)))?|cr)$/i,
   balance: /^(balance|closing\s*balance)$/i,
 };
 
