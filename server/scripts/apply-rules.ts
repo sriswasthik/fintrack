@@ -8,6 +8,7 @@
 import 'dotenv/config';
 
 import { createPrismaClient } from '../src/db';
+import { resolvePayees } from '../src/services/payees/resolve';
 import { applyRuleEngine, ensureDefaultRules } from '../src/services/rules/apply';
 
 const prisma = createPrismaClient();
@@ -25,6 +26,7 @@ async function main() {
   }
 
   const summary = await applyRuleEngine(prisma, { userId: user.id });
+  const payees = await resolvePayees(prisma, { userId: user.id });
 
   console.log(`Considered      ${summary.considered}`);
   console.log(`Recategorized   ${summary.categorized}`);
@@ -32,6 +34,9 @@ async function main() {
   console.log(`Refund links    ${summary.refundLinks}`);
   console.log(`Left manual     ${summary.manual}`);
   console.log(`UNCATEGORIZED   ${summary.uncategorized}`);
+  console.log(
+    `Payees          ${payees.created} created, ${payees.linked} linked, ${payees.skipped} without a counterparty`,
+  );
   console.log('\nBy category:');
   Object.entries(summary.byCategory)
     .sort((a, b) => b[1] - a[1])

@@ -24,6 +24,10 @@ const db = vi.hoisted(() => ({
   splitCreateMany: vi.fn(),
   cacheUpsert: vi.fn(),
   overrideCreate: vi.fn(),
+  // The commit route resolves the payee ledger after categorizing (Phase 15).
+  payeeFindMany: vi.fn(),
+  payeeCreate: vi.fn(),
+  payeeUpdate: vi.fn(),
 }));
 
 const prismaMock = vi.hoisted(() => ({}) as Record<string, unknown>);
@@ -88,6 +92,11 @@ beforeEach(() => {
   db.overrideCreate.mockResolvedValue({});
   db.splitDeleteMany.mockResolvedValue({ count: 0 });
   db.splitCreateMany.mockResolvedValue({ count: 0 });
+  db.payeeFindMany.mockResolvedValue([]);
+  db.payeeCreate.mockImplementation(({ data }: { data: Record<string, unknown> }) =>
+    Promise.resolve({ id: 'payee_new', ...data }),
+  );
+  db.payeeUpdate.mockResolvedValue({});
 
   Object.assign(prismaMock, {
     account: { findUnique: db.accountFindUnique, findFirst: db.accountFindFirst },
@@ -107,6 +116,11 @@ beforeEach(() => {
       findFirst: db.ruleFindFirst,
       create: db.ruleCreate,
       update: db.ruleUpdate,
+    },
+    payee: {
+      findMany: db.payeeFindMany,
+      create: db.payeeCreate,
+      update: db.payeeUpdate,
     },
     merchantCategoryCache: { upsert: db.cacheUpsert },
     categoryOverride: { create: db.overrideCreate },

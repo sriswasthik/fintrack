@@ -26,6 +26,7 @@ import {
   type ColumnMapping,
 } from '../services/parsing/csv';
 import { dateRangeOf, flagDuplicates, type ExistingTransaction } from '../services/parsing/dedup';
+import { resolvePayees } from '../services/payees/resolve';
 import { applyRuleEngine } from '../services/rules/apply';
 import { scopeToUser } from './user-scope';
 
@@ -226,11 +227,17 @@ export const commitTransactions: RequestHandler = async (req, res) => {
   // across anybody else's.
   const categorization = await applyRuleEngine(getPrisma(), { userId });
 
+  // The ledger is resolved after categorization, not before: which lines get a
+  // payee depends on the category (an ATM withdrawal has no counterparty), so
+  // the order is load-bearing rather than incidental.
+  const payees = await resolvePayees(getPrisma(), { userId });
+
   res.status(201).json({
     accountId,
     imported: toImport.length,
     skipped: skipped.length,
     categorization,
+    payees,
   });
 };
 
@@ -442,7 +449,10 @@ export const categorizeTransactions: RequestHandler = async (req, res) => {
   const { accountId } = z.object({ accountId: z.string().min(1) }).parse(req.body);
   await requireAccount(userId, accountId);
 
-  res.json(await applyRuleEngine(getPrisma(), { userId }));
+  const categorization = await applyRuleEngine(getPrisma(), { userId });
+  const payees = await resolvePayees(getPrisma(), { userId });
+
+  res.json({ ...categorization, payees });
 };
 
 const reviewQueueQuerySchema = z.object({

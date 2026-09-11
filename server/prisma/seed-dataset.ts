@@ -102,6 +102,11 @@ export async function seedSyntheticDataset(
 
   // The Phase 3 built-in rule set. Seeded here so a fresh database can run the
   // deterministic engine straight away.
+  //
+  // Neither categories nor payees are resolved here, and for the same reason:
+  // seeded rows land UNCATEGORIZED so Phases 3-4 have work to do, and which
+  // lines get a payee depends on the category. `npm run rules:apply` does both,
+  // in that order.
   const defaultRules = (await ensureDefaultRules(prisma)).added;
 
   return {
