@@ -26,19 +26,48 @@ export interface ApplySummary {
   byCategory: Record<string, number>;
 }
 
+/** What a sync of the built-in rules changed. */
+export interface DefaultRuleSync {
+  added: number;
+  /** Rules whose category or priority moved in `defaults.ts`. */
+  updated: number;
+  /** Rules removed from `defaults.ts` and deleted from the table. */
+  removed: number;
+}
+
 /**
- * Inserts any built-in rules that are not in the table yet.
+ * Brings the built-in rules in the table into line with `defaults.ts`.
  *
  * Idempotent, so it is safe to call from the seed and from the re-apply script.
- * Built-ins are identified by a null userId plus their pattern.
+ * Built-ins are identified by a null userId plus their pattern; a user's own
+ * learned rules have a userId and are never touched here.
+ *
+ * All three directions matter, and only the first used to be handled:
+ *
+ *   * **added** — a new rule in `defaults.ts`.
+ *   * **updated** — the same pattern with a different category or priority.
+ *     Phase 14 moved `^AMAZON PRIME` and `^SPENCERS HYPER` into the
+ *     disambiguation band precisely so they would stop losing a coin toss
+ *     against a broader rule; leaving the old priority in the database would
+ *     have kept the coin toss and made the fix true only in the tests.
+ *   * **removed** — a pattern `defaults.ts` no longer has. An insert-only sync
+ *     leaves it behind forever, still matching, with nothing in the source to
+ *     say why a merchant is being categorized the way it is.
  */
-export async function ensureDefaultRules(prisma: PrismaClient): Promise<number> {
+export async function ensureDefaultRules(prisma: PrismaClient): Promise<DefaultRuleSync> {
   const existing = await prisma.rule.findMany({
     where: { userId: null },
-    select: { pattern: true },
+    select: { id: true, pattern: true, category: true, priority: true },
   });
-  const known = new Set(existing.map((r) => r.pattern));
-  const missing = DEFAULT_RULES.filter((rule) => !known.has(rule.pattern));
+  const byPattern = new Map(existing.map((r) => [r.pattern, r]));
+  const wanted = new Map(DEFAULT_RULES.map((r) => [r.pattern, r]));
+
+  const missing = DEFAULT_RULES.filter((rule) => !byPattern.has(rule.pattern));
+  const stale = DEFAULT_RULES.filter((rule) => {
+    const row = byPattern.get(rule.pattern);
+    return row && (row.category !== rule.category || row.priority !== rule.priority);
+  });
+  const retired = existing.filter((row) => !wanted.has(row.pattern));
 
   if (missing.length > 0) {
     await prisma.rule.createMany({
@@ -52,7 +81,18 @@ export async function ensureDefaultRules(prisma: PrismaClient): Promise<number> 
     });
   }
 
-  return missing.length;
+  for (const rule of stale) {
+    await prisma.rule.update({
+      where: { id: byPattern.get(rule.pattern)!.id },
+      data: { category: rule.category, priority: rule.priority },
+    });
+  }
+
+  if (retired.length > 0) {
+    await prisma.rule.deleteMany({ where: { id: { in: retired.map((r) => r.id) } } });
+  }
+
+  return { added: missing.length, updated: stale.length, removed: retired.length };
 }
 
 function toIso(date: Date): string {

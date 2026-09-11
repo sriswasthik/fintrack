@@ -56,7 +56,10 @@ const PARSED = parseTransactions(CSV, GENERIC.mapping);
 const FLAGGED = flagDuplicates(PARSED.rows, []);
 
 const RULES: EngineRule[] = DEFAULT_RULES.map((rule, i) => ({
-  id: `builtin-${i}`,
+  // Padded so the ids sort in array order. Unpadded, 'builtin-243' sorts before
+  // 'builtin-84' and the priority tiebreak silently reorders the rule set — the
+  // accident that hid `^SPENCERS` shadowing `^SPENCERS HYPER` until Phase 14.
+  id: `builtin-${String(i).padStart(4, '0')}`,
   pattern: rule.pattern,
   category: rule.category,
   priority: rule.priority,

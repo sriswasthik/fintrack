@@ -17,8 +17,12 @@ async function main() {
   const user = await prisma.user.findUnique({ where: { email }, select: { id: true } });
   if (!user) throw new Error(`No user with email ${email} — run \`npm run db:seed\` first`);
 
-  const added = await ensureDefaultRules(prisma);
-  if (added > 0) console.log(`Seeded ${added} built-in rules`);
+  const sync = await ensureDefaultRules(prisma);
+  if (sync.added + sync.updated + sync.removed > 0) {
+    console.log(
+      `Built-in rules  +${sync.added} added, ${sync.updated} updated, ${sync.removed} removed`,
+    );
+  }
 
   const summary = await applyRuleEngine(prisma, { userId: user.id });
 
