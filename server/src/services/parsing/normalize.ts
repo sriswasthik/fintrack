@@ -17,6 +17,7 @@
  * `test-data/README.md` documents the expected output for every descriptor in
  * the synthetic dataset, and `normalize.test.ts` asserts against all of them.
  */
+import { parseVpa } from './upi';
 
 /**
  * Prefixes before a `*` that belong to a payment processor, not the merchant.
@@ -103,6 +104,45 @@ const TRAILING_NOISE = new Set([
   'SALARY',
   'SUPER',
 ]);
+
+/**
+ * The payment rail a line came in on, which every Indian bank prints in front
+ * of the narration: `UPI/SWIGGY INSTAMART/425512`, `NEFT/ZERODHA BROKING LTD`,
+ * `ACH D- AXIS MF SIP`.
+ *
+ * Exactly the same idea as `PASS_THROUGH_PROCESSORS` above — the thing in front
+ * is how the money moved, not who was paid — but reached by a different route.
+ * A processor announces itself with a `*` and a rail with a `/`, and `/` is
+ * already flattened to a space by the time tokens exist, so the rail word has
+ * to be recognised by name instead.
+ *
+ * Leaving it in place is not cosmetic: it defeats every `^BRAND` rule in the
+ * set, because the brand is no longer at the start of the string.
+ */
+const PAYMENT_RAILS = new Set([
+  'UPI',
+  'NEFT',
+  'IMPS',
+  'RTGS',
+  'ACH',
+  'NACH',
+  'ECS',
+  'MMT',
+  'TPT',
+  'INF',
+  'MPS',
+  'BIL',
+  'BILLPAY',
+  'VPS',
+  'ATOM',
+  'CMS',
+]);
+
+/**
+ * Direction markers a rail prints right after itself: `ACH D-`, `UPI/DR`. They
+ * say which way the money went, which the sign of the amount already says.
+ */
+const RAIL_DIRECTIONS = new Set(['DR', 'CR', 'D', 'C', 'P2M', 'P2A']);
 
 /** Domain suffixes stripped from the end of a merchant token. */
 const DOMAIN_SUFFIXES = ['.COM', '.ORG', '.NET', '.CO.UK', '.IO'];
@@ -279,6 +319,23 @@ export function normalizeMerchant(raw: string): string {
   tokens = tokens.filter((t) => !isReferenceToken(t));
   if (tokens.length === 0) return '';
 
+  // 3a. The payment rail, and the direction marker that trails it. Never the
+  //     last token left: a line that is only "UPI" has nothing else to be.
+  while (tokens.length > 1 && PAYMENT_RAILS.has(stripHyphens(tokens[0]))) {
+    tokens = tokens.slice(1);
+    while (tokens.length > 1 && RAIL_DIRECTIONS.has(stripHyphens(tokens[0]))) {
+      tokens = tokens.slice(1);
+    }
+  }
+
+  // 3b. A UPI address is kept on the transaction in its own column, and as part
+  //     of the merchant key it would give the same person a different key on
+  //     every app they paid from.
+  if (tokens.length > 1) {
+    const withoutVpa = tokens.filter((t) => !isVpaToken(t));
+    if (withoutVpa.length > 0) tokens = withoutVpa;
+  }
+
   // 4. Trailing place names and country codes (foreign charges).
   tokens = stripTrailingWhile(tokens, isTrailingPlace);
 
@@ -311,6 +368,23 @@ export function normalizeMerchant(raw: string): string {
 
   const result = tokens.join(' ').trim();
   return lookupAlias(result) ?? applyPrefixRules(result);
+}
+
+/** Strips the hyphens a rail marker trails, so `D-` reads as `D`. */
+function stripHyphens(token: string): string {
+  return token.replace(/^-+|-+$/g, '');
+}
+
+/**
+ * True for a token that is a UPI address.
+ *
+ * Uses the same reading as `services/parsing/upi.ts`, which is deliberately
+ * strict about the difference between `ramesh@okaxis` and `care@phonepe.com`:
+ * an email in a statement footer is not a payment address, and must not be
+ * silently deleted from a merchant name.
+ */
+function isVpaToken(token: string): boolean {
+  return parseVpa(token) !== null;
 }
 
 function isTrailingPlace(token: string): boolean {
