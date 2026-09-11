@@ -102,7 +102,7 @@ export async function seedSyntheticDataset(
 
   // The Phase 3 built-in rule set. Seeded here so a fresh database can run the
   // deterministic engine straight away.
-  const defaultRules = await ensureDefaultRules(prisma);
+  const defaultRules = (await ensureDefaultRules(prisma)).added;
 
   return {
     userId: user.id,

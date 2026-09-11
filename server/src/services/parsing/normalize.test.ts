@@ -211,3 +211,57 @@ describe('the Phase 1 synthetic dataset', () => {
     expect(shapes.size).toBeGreaterThanOrEqual(90);
   });
 });
+
+describe('Indian payment-rail narrations (Phase 14)', () => {
+  it.each([
+    ['UPI/SWIGGY INSTAMART/425512', 'SWIGGY INSTAMART'],
+    ['UPI/BLINKIT/998233', 'BLINKIT'],
+    ['NEFT/ZERODHA BROKING LTD', 'ZERODHA BROKING LTD'],
+    ['IMPS/BAJAJ FINANCE', 'BAJAJ FINANCE'],
+    ['RTGS/TATA CAPITAL', 'TATA CAPITAL'],
+    ['NACH/GROWW', 'GROWW'],
+  ])('strips the rail prefix from %s', (raw, expected) => {
+    // Without this the brand is no longer at the start of the string, and every
+    // `^BRAND` rule in the set stops matching real UPI narrations.
+    expect(normalizeMerchant(raw)).toBe(expected);
+  });
+
+  it.each([
+    ['ACH D- AXIS MF SIP', 'AXIS MF SIP'],
+    ['UPI/DR/MAHANAGAR GAS', 'MAHANAGAR GAS'],
+    ['NEFT CR INFOSYS LTD', 'INFOSYS LTD'],
+  ])('strips the direction marker that follows the rail in %s', (raw, expected) => {
+    expect(normalizeMerchant(raw)).toBe(expected);
+  });
+
+  it('keeps the rail word when it is all there is', () => {
+    // A line that says only "UPI" has nothing else to be called.
+    expect(normalizeMerchant('UPI')).toBe('UPI');
+    expect(normalizeMerchant('NEFT')).toBe('NEFT');
+  });
+
+  it('drops a UPI address from the merchant key', () => {
+    // The address is kept in the transaction's own `upiVpa` column. Left in the
+    // key, the same person would get a different key on every app they paid
+    // from, and neither dedup nor the merchant cache would ever match them.
+    expect(normalizeMerchant('UPI/RAMESH KUMAR/9876543210@ybl')).toBe('RAMESH KUMAR');
+    expect(normalizeMerchant('UPI/ANAND SWEETS/anand@okbizaxis')).toBe('ANAND SWEETS');
+  });
+
+  it('keeps an email address, which is not a payment address', () => {
+    // `care@phonepe.com` in a statement footer is a mailbox, so it survives the
+    // VPA drop; the `.COM` then goes the way every domain suffix goes, and the
+    // whole key is upper-cased as always.
+    expect(normalizeMerchant('SUPPORT care@phonepe.com')).toBe('SUPPORT CARE@PHONEPE');
+  });
+
+  it('keeps the address when it is the only thing in the line', () => {
+    // Dropping it would leave an empty merchant key, which is worse than an
+    // ugly one.
+    expect(normalizeMerchant('ramesh@okaxis')).toBe('RAMESH@OKAXIS');
+  });
+
+  it('leaves a merchant that merely starts with a rail-like word alone', () => {
+    expect(normalizeMerchant('ATOM')).toBe('ATOM');
+  });
+});

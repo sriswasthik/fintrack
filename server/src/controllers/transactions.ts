@@ -13,6 +13,7 @@ import { getPrisma } from '../db';
 import { LOW_CONFIDENCE_THRESHOLD } from '../services/ai/categorize';
 import { monthWindow } from '../services/dashboard/window';
 import { CATEGORIES } from '../services/rules/categories';
+import { classifyCounterparty } from '../services/rules/counterparty';
 import { LEARNED_RULE_PRIORITY } from '../services/rules/defaults';
 import { currentUserId } from '../middleware/auth';
 import { HttpError } from '../middleware/errorHandler';
@@ -272,6 +273,12 @@ function serializeTransaction(t: {
   linkedRefundId: string | null;
   splits?: { id: string; category: string; amount: unknown; note: string | null }[];
 }) {
+  const counterparty = classifyCounterparty({
+    counterpartyRaw: t.counterpartyRaw,
+    upiVpa: t.upiVpa,
+    normalizedMerchant: t.normalizedMerchant,
+  });
+
   return {
     id: t.id,
     accountId: t.accountId,
@@ -285,6 +292,13 @@ function serializeTransaction(t: {
     // can read back is a field that does not exist.
     counterpartyRaw: t.counterpartyRaw ?? null,
     upiVpa: t.upiVpa ?? null,
+    // Phase 14. Derived on read rather than stored: it is a reading of the
+    // current rule set, and a column would hold whatever the rule set said on
+    // the day the row was imported. The heuristic is cheap and pure, so
+    // computing it per row costs nothing and can never be stale.
+    counterpartyType: counterparty.type,
+    /** The counterparty with any `@psp` bank suffix stripped, for display. */
+    counterpartyDisplay: counterparty.display || null,
     amount: Number(t.amount),
     currency: t.currency,
     category: t.category,

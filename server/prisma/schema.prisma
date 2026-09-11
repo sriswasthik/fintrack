@@ -36,6 +36,17 @@ enum Category {
   TRANSFER
   FEES_INTEREST
   INSURANCE
+  /// Repayment of borrowed money: an EMI instalment, a personal or vehicle
+  /// loan, a credit-card EMI conversion. Distinct from FEES_INTEREST, which is
+  /// what a bank charges you, and from TRANSFER, which moves your own money.
+  EMI_LOAN
+  /// Money put away rather than spent: an SIP, a broker transfer, a mutual-fund
+  /// purchase. It leaves the account like spending does, so it is a category
+  /// rather than an exclusion — see docs/EDGE_CASES.md.
+  INVESTMENTS
+  /// Cash taken out at an ATM or over the counter. The money is not yet spent
+  /// on anything in particular; this category is where it waits.
+  CASH_WITHDRAWAL
   EDUCATION
   PERSONAL_CARE
   GIFTS_DONATIONS

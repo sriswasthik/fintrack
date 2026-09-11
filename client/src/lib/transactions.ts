@@ -113,7 +113,14 @@ export async function commitImport(input: {
   return data;
 }
 
-/** The fixed taxonomy from PROJECT_CONTEXT.md §5, mirroring the Prisma enum. */
+/**
+ * The fixed taxonomy from PROJECT_CONTEXT.md §5, mirroring the Prisma enum.
+ *
+ * Hand-maintained, so `transactions.taxonomy.test.ts` reads the Prisma schema
+ * and asserts this list matches it value for value and in order — a category
+ * the server can store but this array has never heard of would vanish from
+ * every picker on the client with nothing to say it had.
+ */
 export const CATEGORIES = [
   'GROCERIES',
   'DINING',
@@ -129,6 +136,9 @@ export const CATEGORIES = [
   'TRANSFER',
   'FEES_INTEREST',
   'INSURANCE',
+  'EMI_LOAN',
+  'INVESTMENTS',
+  'CASH_WITHDRAWAL',
   'EDUCATION',
   'PERSONAL_CARE',
   'GIFTS_DONATIONS',
@@ -162,7 +172,22 @@ export interface Transaction {
   transferPairId: string | null;
   linkedRefundId: string | null;
   splits: TransactionSplit[];
+  /** Who was on the other end, as the server's heuristic reads it (Phase 14). */
+  counterpartyType?: CounterpartyType;
+  /** The counterparty with any `@bank` UPI suffix stripped, ready to render. */
+  counterpartyDisplay?: string | null;
+  counterpartyRaw?: string | null;
+  upiVpa?: string | null;
 }
+
+/**
+ * Whether the other side of a transaction was a person or a business.
+ *
+ * UNKNOWN is the common answer on bank narrations, which upper-case everything
+ * and throw away the capitalisation a name is recognised by — so treat it as
+ * "not stated" rather than as a third kind of counterparty.
+ */
+export type CounterpartyType = 'PERSON' | 'BUSINESS' | 'UNKNOWN';
 
 export interface TransactionPage {
   total: number;
