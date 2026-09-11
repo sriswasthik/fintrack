@@ -67,6 +67,9 @@ const previewRowSchema = z.object({
   rawMerchant: z.string().min(1),
   normalizedMerchant: z.string(),
   amount: z.number().finite(),
+  /** Populated by the Phase 13 adapters; absent from a CSV or generic import. */
+  counterpartyRaw: z.string().nullable().optional().default(null),
+  upiVpa: z.string().nullable().optional().default(null),
 });
 
 const commitBodySchema = z.object({
@@ -205,6 +208,8 @@ export const commitTransactions: RequestHandler = async (req, res) => {
         description: row.description,
         rawMerchant: row.rawMerchant,
         normalizedMerchant: row.normalizedMerchant,
+        counterpartyRaw: row.counterpartyRaw,
+        upiVpa: row.upiVpa,
         amount: row.amount.toFixed(2),
         currency: 'INR',
         category: 'UNCATEGORIZED' as const,
@@ -256,6 +261,8 @@ function serializeTransaction(t: {
   description: string;
   rawMerchant: string;
   normalizedMerchant: string;
+  counterpartyRaw?: string | null;
+  upiVpa?: string | null;
   amount: unknown;
   currency: string;
   category: string;
@@ -273,6 +280,11 @@ function serializeTransaction(t: {
     description: t.description,
     rawMerchant: t.rawMerchant,
     normalizedMerchant: t.normalizedMerchant,
+    // Written by the Phase 13 adapters; null for a CSV or a bank statement that
+    // did not carry them. Returned rather than merely stored — a field nothing
+    // can read back is a field that does not exist.
+    counterpartyRaw: t.counterpartyRaw ?? null,
+    upiVpa: t.upiVpa ?? null,
     amount: Number(t.amount),
     currency: t.currency,
     category: t.category,

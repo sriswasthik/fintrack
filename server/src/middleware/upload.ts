@@ -57,9 +57,17 @@ const PDF_MIME_TYPES = new Set(['application/pdf', 'application/x-pdf', 'applica
  */
 export const MAX_PDF_BYTES = 15 * 1024 * 1024;
 
+/**
+ * How many statements one batch import may carry.
+ *
+ * A quarter is three; a custom range over two years is twenty-four. Past that
+ * it is not a range, and each file is a PDF parse holding a buffer in memory.
+ */
+export const MAX_BATCH_FILES = 24;
+
 export const pdfUpload = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: MAX_PDF_BYTES, files: 1 },
+  limits: { fileSize: MAX_PDF_BYTES, files: MAX_BATCH_FILES },
   fileFilter: (_req, file, callback) => {
     const looksLikePdf =
       PDF_MIME_TYPES.has(file.mimetype) || /\.pdf$/i.test(file.originalname ?? '');
