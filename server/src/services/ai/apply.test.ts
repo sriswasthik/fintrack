@@ -2,6 +2,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { PrismaClient } from '../../generated/prisma/client';
 import { CATEGORIES } from '../rules/categories';
+import { DEFAULT_RULES } from '../rules/defaults';
+import { matchRule, orderRules, type EngineRule } from '../rules/engine';
 import { applyLlmCategorization } from './apply';
 import { EVAL_SET } from './eval-set';
 import type { CategorizationOutcome, MerchantCategorizer } from './categorize';
@@ -225,10 +227,12 @@ describe('the hand-labeled eval set', () => {
     EVAL_SET.forEach((testCase) => expect(CATEGORIES).toContain(testCase.expected));
   });
 
-  it('covers the merchants the rule engine actually leaves behind', () => {
-    const unresolved = EVAL_SET.filter((c) => c.difficulty === 'unresolved').map((c) => c.merchant);
-    // These are precisely the nine the Phase 3 run reported as UNCATEGORIZED.
-    expect(unresolved).toEqual(
+  it('still contains the nine merchants the Phase 3 run could not resolve', () => {
+    // Their `difficulty` has moved as the rule set grew — six of the nine have
+    // a rule now — so this asserts they are still *in* the set rather than how
+    // they are labeled. Dropping them would quietly make the eval easier.
+    const merchants = EVAL_SET.map((c) => c.merchant);
+    expect(merchants).toEqual(
       expect.arrayContaining([
         'BLUEBIRD BAKERY',
         'THE HALL',
@@ -243,6 +247,11 @@ describe('the hand-labeled eval set', () => {
     );
   });
 
+  it('still leaves the model enough to do to be worth measuring', () => {
+    const forModel = EVAL_SET.filter((c) => c.difficulty !== 'control');
+    expect(forModel.length).toBeGreaterThanOrEqual(15);
+  });
+
   it('has no duplicate merchants', () => {
     const merchants = EVAL_SET.map((c) => c.merchant);
     expect(new Set(merchants).size).toBe(merchants.length);
@@ -250,5 +259,54 @@ describe('the hand-labeled eval set', () => {
 
   it('is big enough to be worth reporting a percentage from', () => {
     expect(EVAL_SET.length).toBeGreaterThanOrEqual(25);
+  });
+
+  // --- The half of the eval that needs no API key ----------------------
+  // `npm run eval:categorize` scores the pipeline as it runs: rules first, the
+  // model on what is left. Its rule half is deterministic, so it can be
+  // asserted here and will fail the moment a rule change moves a merchant.
+
+  const ordered: EngineRule[] = orderRules(
+    DEFAULT_RULES.map((rule, i) => ({
+      id: `builtin-${String(i).padStart(4, '0')}`,
+      pattern: rule.pattern,
+      category: rule.category,
+      priority: rule.priority,
+      userId: null,
+      learnedFromOverride: false,
+    })),
+  );
+
+  it('has a rule for every case labeled a control', () => {
+    // A `control` that no rule matches is a label that has quietly gone stale,
+    // and it reads as a stronger claim about the rule set than is true.
+    const uncovered = EVAL_SET.filter(
+      (c) => c.difficulty === 'control' && matchRule(c.merchant, ordered) === null,
+    ).map((c) => c.merchant);
+    expect(uncovered).toEqual([]);
+  });
+
+  it('has no rule for any case labeled unresolved', () => {
+    const covered = EVAL_SET.filter(
+      (c) => c.difficulty === 'unresolved' && matchRule(c.merchant, ordered) !== null,
+    ).map((c) => c.merchant);
+    expect(covered).toEqual([]);
+  });
+
+  it('gets every rule-settled case right', () => {
+    // Precision, not coverage: a rule that fires and is wrong corrupts totals
+    // silently, which is worse than the model never seeing the merchant.
+    const wrong = EVAL_SET.map((c) => ({ c, rule: matchRule(c.merchant, ordered) }))
+      .filter(({ c, rule }) => rule !== null && rule.category !== c.expected)
+      .map(({ c, rule }) => `${c.merchant}: got ${rule!.category}, want ${c.expected}`);
+    expect(wrong).toEqual([]);
+  });
+
+  it('leaves a payment to a person for a human rather than a rule', () => {
+    // There is no honest category for "money to Ramesh". A rule that claimed
+    // one would be inventing a purchase.
+    ['RAMESH KUMAR', '9876543210', 'Q629384756', 'PAYTMQR2810'].forEach((merchant) => {
+      expect(matchRule(merchant, ordered)).toBeNull();
+    });
   });
 });

@@ -28,6 +28,30 @@ describe('the system prompt', () => {
   it('reserves REFUND for the engine rather than the model', () => {
     expect(SYSTEM_PROMPT).toMatch(/Never return REFUND/i);
   });
+
+  it('tells the model which country, rail and currency it is reading', () => {
+    // Phase 14: without this, an unfamiliar name gets read against whatever the
+    // model has seen most of, which is not India.
+    expect(SYSTEM_PROMPT).toMatch(/users are in India/i);
+    expect(SYSTEM_PROMPT).toMatch(/\bUPI\b/);
+    expect(SYSTEM_PROMPT).toMatch(/Indian rupees \(INR\)/i);
+  });
+
+  it('says to lean Indian rather than to assume it', () => {
+    // A prompt that claimed every merchant is Indian would misread the Netflix
+    // and the fortnight abroad that are also in the data.
+    expect(SYSTEM_PROMPT).toMatch(/Merchants from outside India do appear/i);
+  });
+
+  it('explains the three categories Phase 14 added', () => {
+    expect(SYSTEM_PROMPT).toMatch(/INVESTMENTS covers an SIP/i);
+    expect(SYSTEM_PROMPT).toMatch(/EMI_LOAN is repaying borrowed money/i);
+    expect(SYSTEM_PROMPT).toMatch(/CASH_WITHDRAWAL is cash out of an ATM/i);
+  });
+
+  it('tells the model not to invent a category for a payment to a person', () => {
+    expect(SYSTEM_PROMPT).toMatch(/payment to an individual/i);
+  });
 });
 
 describe('batched', () => {

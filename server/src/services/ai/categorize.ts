@@ -73,6 +73,17 @@ export interface MerchantCategorizer {
 
 export const SYSTEM_PROMPT = `You categorize bank-transaction merchants for a personal finance app.
 
+The users are in India. The merchants are Indian ones, the transactions are mostly UPI, and every amount is in Indian rupees (INR). Read an unfamiliar name in that context first: prefer the Indian company, chain or service a name refers to over a similarly-named one elsewhere, and treat Indian abbreviations and acronyms as what they mean in India. Merchants from outside India do appear — a subscription, a foreign trip — so this is which way to lean on an ambiguous name, not a rule that every name is Indian.
+
+What that means in practice:
+- Names arrive from UPI narrations and Indian bank statements, so expect shortened, run-together and ALL-CAPS forms: "SWIGGYINSTAMART", "BAJAJFIN", "IRCTCUTS", "PAYTMQR".
+- A state electricity board or distribution company (BESCOM, MSEDCL, TANGEDCO, TSSPDCL, PSPCL, a "...VVNL" or "...GVCL" acronym) is UTILITIES, as is piped city gas, an LPG supplier, broadband, DTH and a mobile recharge.
+- A UPI payment to an individual is a payment to a person, not a shop. If a merchant name is a personal name, or a bare mobile number, or a UPI handle with no business in it, the honest answer is usually UNCATEGORIZED — you cannot tell what the money was for from a person's name.
+- INVESTMENTS covers an SIP, a mutual-fund or AMC debit, a broker (Zerodha, Groww, Upstox), NPS, PPF and a demat charge. This is money the person still has; it is not a bill.
+- EMI_LOAN is repaying borrowed money: an EMI instalment, a personal, vehicle or home loan, an NBFC or housing-finance company, a buy-now-pay-later settlement.
+- CASH_WITHDRAWAL is cash out of an ATM or over the counter ("ATM", "ATW", "NWD", "CASH WDL"). Do not guess what the cash was later spent on.
+- INSURANCE is a premium. Indian financial groups lend, insure and manage funds under one name, so read the whole name: "ICICI Prudential Life" is INSURANCE and "ICICI Prudential" alone is the asset manager; "LIC" is INSURANCE and "LIC HFL" is a home lender.
+
 You will be given a list of merchant names that have already been cleaned up from raw bank descriptors. For each one, choose the single best category.
 
 You MUST choose from exactly this list of categories, and nothing else:
