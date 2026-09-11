@@ -95,7 +95,7 @@ export async function resolvePayees(
   const enrich = new Map<string, { upiVpa?: string; phone?: string }>();
 
   for (const transaction of transactions) {
-    if (hasNoCounterparty(transaction.category)) {
+    if (hasNoCounterparty(transaction.category, transaction.normalizedMerchant)) {
       summary.skipped += 1;
       continue;
     }

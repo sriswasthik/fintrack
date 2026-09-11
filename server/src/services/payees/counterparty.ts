@@ -21,6 +21,8 @@
 import { normalizeMerchant } from '../parsing/normalize';
 import { parseVpa } from '../parsing/upi';
 import { classifyCounterparty, type CounterpartyType } from '../rules/counterparty';
+import { DEFAULT_RULES } from '../rules/defaults';
+import { matchRule, orderRules, type EngineRule } from '../rules/engine';
 
 /** The fields payee resolution reads off a transaction. */
 export interface CounterpartySource {
@@ -174,15 +176,55 @@ export function resolveCounterparty(source: CounterpartySource): ResolvedCounter
 }
 
 /**
+ * Categories whose lines have no other party.
+ *
+ * Cash out of an ATM has no counterparty — the money moved from an account to
+ * a pocket. A bank fee's counterparty is the bank, which is nobody wants a
+ * running total of. Both would otherwise land in the ledger as a payee named
+ * after a narration fragment: "ATW-41223 CASH WDL".
+ */
+const NO_COUNTERPARTY: ReadonlySet<string> = new Set(['CASH_WITHDRAWAL', 'FEES_INTEREST']);
+
+/** The built-in rules, ordered once, for reading a line the database has not. */
+let orderedDefaults: EngineRule[] | null = null;
+function builtInRules(): EngineRule[] {
+  orderedDefaults ??= orderRules(
+    DEFAULT_RULES.map((rule, i) => ({
+      id: `builtin-${String(i).padStart(4, '0')}`,
+      pattern: rule.pattern,
+      category: rule.category,
+      priority: rule.priority,
+      userId: null,
+      learnedFromOverride: false,
+    })),
+  );
+  return orderedDefaults;
+}
+
+/**
  * Lines that get no payee at all.
  *
- * Cash out of an ATM has no other party — the money moved from an account to a
- * pocket. A bank fee's counterparty is the bank, which is not a relationship
- * anybody wants a running total of. Both would otherwise land as a payee named
- * after a narration fragment.
+ * Takes the stored category *and* the merchant key, and needs only one of them
+ * to say so. The category alone is not enough, for two reasons that are really
+ * the same reason:
+ *
+ *   * The rule engine leaves a tail of merchants UNCATEGORIZED on every import
+ *     by design (§7 — nothing is guessed). A withdrawal among them would get a
+ *     payee named after its narration.
+ *   * `applyRuleEngine` reads rules from the database and does not seed them.
+ *     On a database whose `Rule` table is empty — a fresh CI run, a restore —
+ *     *every* row is UNCATEGORIZED when resolution reaches it.
+ *
+ * So the merchant key is also read against the built-in rules from code, which
+ * are present whatever the database holds. Reusing the rule set rather than
+ * restating its ATM patterns here means the two can never drift.
  */
-export function hasNoCounterparty(category: string): boolean {
-  return category === 'CASH_WITHDRAWAL' || category === 'FEES_INTEREST';
+export function hasNoCounterparty(category: string, normalizedMerchant?: string): boolean {
+  if (NO_COUNTERPARTY.has(category)) return true;
+  if (!normalizedMerchant?.trim()) return false;
+
+  const rule = matchRule(normalizedMerchant, builtInRules());
+  return rule !== null && NO_COUNTERPARTY.has(rule.category);
 }
 
 /** Re-exported so callers do not need two imports to read a verdict. */

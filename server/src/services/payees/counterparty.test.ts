@@ -155,6 +155,32 @@ describe('hasNoCounterparty', () => {
       expect(hasNoCounterparty(category)).toBe(false);
     },
   );
+
+  it.each([
+    ['ATW-41223 CASH WDL', 'an SBI withdrawal code'],
+    ['NWD ATM HDFC BANK', 'a withdrawal at another bank’s machine'],
+    ['CASH WDL', 'the bare narration'],
+    ['ATM FEE', 'a charge for using the machine'],
+  ])('reads %s as having no counterparty even while UNCATEGORIZED (%s)', (merchant) => {
+    // The bug CI caught. `applyRuleEngine` reads rules from the database and
+    // does not seed them, so on a fresh database every row is UNCATEGORIZED
+    // when resolution reaches it — and the rule engine leaves a tail
+    // UNCATEGORIZED on every real import anyway. Either way a withdrawal was
+    // becoming a payee named after its own narration.
+    expect(hasNoCounterparty('UNCATEGORIZED', merchant)).toBe(true);
+  });
+
+  it.each(['SAM R', 'SWIGGY', 'PAYTM WALLET', 'RAMESH KUMAR'])(
+    'still gives %s a payee when the category is not yet known',
+    (merchant) => {
+      expect(hasNoCounterparty('UNCATEGORIZED', merchant)).toBe(false);
+    },
+  );
+
+  it('does not need a merchant key to answer from the category', () => {
+    expect(hasNoCounterparty('CASH_WITHDRAWAL', '')).toBe(true);
+    expect(hasNoCounterparty('UNCATEGORIZED', '')).toBe(false);
+  });
 });
 
 describe('payeeTypeOf', () => {
