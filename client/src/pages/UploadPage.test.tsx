@@ -6,7 +6,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { UploadPage } from '@/pages/UploadPage';
 import type * as StatementsModule from '@/lib/statements';
-import { inspectStatement, parseStatement } from '@/lib/statements';
+import type { BatchPreview, BatchRow } from '@/lib/statements';
+import { inspectStatement, parseStatement, parseStatementBatch } from '@/lib/statements';
 import {
   commitImport,
   fetchAccounts,
@@ -25,12 +26,18 @@ vi.mock('@/lib/transactions', () => ({
 
 vi.mock('@/lib/statements', async (importOriginal) => {
   const actual = await importOriginal<typeof StatementsModule>();
-  return { ...actual, inspectStatement: vi.fn(), parseStatement: vi.fn() };
+  return {
+    ...actual,
+    inspectStatement: vi.fn(),
+    parseStatement: vi.fn(),
+    parseStatementBatch: vi.fn(),
+  };
 });
 
 const fetchAccountsMock = vi.mocked(fetchAccounts);
 const inspectStatementMock = vi.mocked(inspectStatement);
 const parseStatementMock = vi.mocked(parseStatement);
+const parseStatementBatchMock = vi.mocked(parseStatementBatch);
 const uploadCsvMock = vi.mocked(uploadCsv);
 const commitImportMock = vi.mocked(commitImport);
 
@@ -340,5 +347,225 @@ describe('PDF statements', () => {
 
     expect(await screen.findByText(/not password-protected/i)).toBeInTheDocument();
     expect(screen.queryByLabelText('Statement password')).not.toBeInTheDocument();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Statement period and batch import
+// ---------------------------------------------------------------------------
+
+const pdfFile = (name: string) => new File(['%PDF-1.4 pretend'], name, { type: 'application/pdf' });
+
+const batchRow = (index: number, over: Partial<BatchRow> = {}): BatchRow => ({
+  ...row(index),
+  fileIndex: 0,
+  fileName: 'april.pdf',
+  counterpartyRaw: null,
+  upiVpa: null,
+  ...over,
+});
+
+const BATCH: BatchPreview = {
+  status: 'batch-preview',
+  accountId: 'acct_1',
+  files: [
+    {
+      index: 0,
+      fileName: 'april.pdf',
+      status: 'parsed',
+      source: 'hdfc',
+      sourceLabel: 'HDFC Bank',
+      via: 'adapter',
+      rowCount: 2,
+      skippedRows: [],
+    },
+    {
+      index: 1,
+      fileName: 'may.pdf',
+      status: 'parsed',
+      source: 'hdfc',
+      sourceLabel: 'HDFC Bank',
+      via: 'adapter',
+      rowCount: 1,
+      skippedRows: [],
+    },
+  ],
+  filesParsed: 2,
+  filesFailed: 0,
+  totalRows: 3,
+  duplicateCount: 1,
+  crossFileDuplicateCount: 1,
+  rows: [
+    batchRow(1),
+    batchRow(2),
+    batchRow(3, {
+      fileIndex: 1,
+      fileName: 'may.pdf',
+      duplicate: {
+        kind: 'in-file',
+        matchesRowIndex: 1,
+        existingDate: '2026-03-01',
+        reason: 'Same amount and merchant as a row in april.pdf',
+      },
+    }),
+  ],
+};
+
+async function chooseAccount(user: ReturnType<typeof userEvent.setup>) {
+  await user.click(screen.getByLabelText('Account'));
+  await user.click(await screen.findByRole('option', { name: 'Everyday Checking' }));
+}
+
+async function choosePeriod(user: ReturnType<typeof userEvent.setup>, label: string) {
+  await user.click(screen.getByLabelText('Statement period'));
+  await user.click(await screen.findByRole('option', { name: label }));
+}
+
+describe('statement period', () => {
+  beforeEach(() => {
+    inspectStatementMock.mockResolvedValue({ requiresPassword: false });
+    parseStatementBatchMock.mockResolvedValue(BATCH);
+  });
+
+  it('takes one file a month, and several for a quarter', async () => {
+    const user = userEvent.setup();
+    renderPage();
+
+    const single = screen.getByLabelText('CSV or PDF file');
+    expect(single).not.toHaveAttribute('multiple');
+
+    await choosePeriod(user, 'Quarterly');
+    expect(await screen.findByLabelText('CSV or PDF files')).toHaveAttribute('multiple');
+  });
+
+  it('offers a custom range too', async () => {
+    const user = userEvent.setup();
+    renderPage();
+    await choosePeriod(user, 'Custom range');
+    expect(await screen.findByLabelText('CSV or PDF files')).toHaveAttribute('multiple');
+  });
+
+  it('sends every chosen file as one batch', async () => {
+    const user = userEvent.setup();
+    renderPage();
+    await chooseAccount(user);
+    await choosePeriod(user, 'Quarterly');
+
+    await user.upload(screen.getByLabelText('CSV or PDF files'), [
+      pdfFile('april.pdf'),
+      pdfFile('may.pdf'),
+      pdfFile('june.pdf'),
+    ]);
+    await user.click(screen.getByRole('button', { name: 'Upload' }));
+
+    await waitFor(() => expect(parseStatementBatchMock).toHaveBeenCalledOnce());
+    expect(parseStatementBatchMock.mock.calls[0][0].files).toHaveLength(3);
+    // One batch call, not one call per file.
+    expect(parseStatementMock).not.toHaveBeenCalled();
+  });
+
+  it('does not inspect each file up front when several are chosen', async () => {
+    // With one file the answer decides whether to show a password box before
+    // uploading. With several, the batch preview answers it per file instead.
+    const user = userEvent.setup();
+    renderPage();
+    await chooseAccount(user);
+    await choosePeriod(user, 'Quarterly');
+
+    await user.upload(screen.getByLabelText('CSV or PDF files'), [pdfFile('a.pdf'), pdfFile('b.pdf')]);
+
+    expect(inspectStatementMock).not.toHaveBeenCalled();
+  });
+});
+
+describe('the combined batch preview', () => {
+  beforeEach(() => {
+    inspectStatementMock.mockResolvedValue({ requiresPassword: false });
+    parseStatementBatchMock.mockResolvedValue(BATCH);
+  });
+
+  async function runBatch(user: ReturnType<typeof userEvent.setup>, preview = BATCH) {
+    parseStatementBatchMock.mockResolvedValue(preview);
+    renderPage();
+    await chooseAccount(user);
+    await choosePeriod(user, 'Quarterly');
+    await user.upload(screen.getByLabelText('CSV or PDF files'), [
+      pdfFile('april.pdf'),
+      pdfFile('may.pdf'),
+    ]);
+    await user.click(screen.getByRole('button', { name: 'Upload' }));
+    return screen.findByRole('table', { name: 'Files in this import' });
+  }
+
+  it('lists every file with its detected format and status', async () => {
+    const user = userEvent.setup();
+    const table = await runBatch(user);
+
+    expect(within(table).getByText('april.pdf')).toBeInTheDocument();
+    expect(within(table).getByText('may.pdf')).toBeInTheDocument();
+    expect(within(table).getAllByText('HDFC Bank')).toHaveLength(2);
+    expect(within(table).getAllByText('Parsed OK')).toHaveLength(2);
+  });
+
+  it('says how many duplicates were repeated between files', async () => {
+    const user = userEvent.setup();
+    await runBatch(user);
+
+    expect(await screen.findByText(/repeated between files/i)).toBeInTheDocument();
+  });
+
+  it('commits every file in one import', async () => {
+    const user = userEvent.setup();
+    await runBatch(user);
+
+    await user.click(await screen.findByRole('button', { name: 'Confirm Import' }));
+
+    await waitFor(() => expect(commitImportMock).toHaveBeenCalledOnce());
+    const [call] = commitImportMock.mock.calls;
+    expect(call[0].rows).toHaveLength(3);
+    // The cross-file duplicate defaults to skip, like any other duplicate.
+    expect(call[0].resolutions).toEqual({ 3: 'skip' });
+  });
+
+  it('shows a per-file password box for a locked file, and keeps the rest', async () => {
+    const user = userEvent.setup();
+    await runBatch(user, {
+      ...BATCH,
+      filesParsed: 1,
+      filesFailed: 1,
+      files: [
+        BATCH.files[0],
+        {
+          ...BATCH.files[1],
+          status: 'needs-password',
+          source: null,
+          sourceLabel: null,
+          via: null,
+          rowCount: 0,
+          message: 'This statement is password-protected.',
+        },
+      ],
+    });
+
+    expect(await screen.findByText('Needs password')).toBeInTheDocument();
+    expect(screen.getByLabelText('Password for may.pdf')).toBeInTheDocument();
+    // The file that did parse is still importable.
+    expect(screen.getByRole('button', { name: 'Confirm Import' })).toBeEnabled();
+  });
+
+  it('retries with the passwords the user typed', async () => {
+    const user = userEvent.setup();
+    await runBatch(user, {
+      ...BATCH,
+      filesParsed: 1,
+      filesFailed: 1,
+      files: [BATCH.files[0], { ...BATCH.files[1], status: 'needs-password', rowCount: 0 }],
+    });
+
+    await user.type(await screen.findByLabelText('Password for may.pdf'), 'hunter2');
+    await user.click(screen.getByRole('button', { name: /retry the files that failed/i }));
+
+    await waitFor(() => expect(parseStatementBatchMock).toHaveBeenCalledTimes(2));
+    expect(parseStatementBatchMock.mock.calls[1][0].passwords).toEqual({ 1: 'hunter2' });
   });
 });

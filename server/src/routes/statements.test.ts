@@ -103,7 +103,9 @@ describe('POST /api/statements/parse', () => {
     // Same envelope, so the client's confirm step and /transactions/commit
     // needed no changes.
     expect(response.body.status).toBe('preview');
-    expect(response.body.source).toBe('layout');
+    expect(response.body.via).toBe('layout');
+    // No adapter claims the Phase 12 fixture, which is the point of it.
+    expect(response.body.source).toBe('unknown');
     expect(response.body.totalRows).toBe(60);
     expect(response.body.skippedRows).toEqual([]);
     expect(response.body.rows[0]).toMatchObject({
@@ -221,7 +223,7 @@ describe('POST /api/statements/parse', () => {
       .expect(200);
 
     expect(reader.read).toHaveBeenCalledOnce();
-    expect(response.body.source).toBe('model');
+    expect(response.body.via).toBe('model');
     expect(response.body.modelCalls).toBe(1);
     expect(response.body.totalRows).toBe(1);
   });
@@ -287,3 +289,166 @@ async function buildTextOnlyPdf(): Promise<Buffer> {
   doc.end();
   return done;
 }
+
+// ---------------------------------------------------------------------------
+// Batch import
+// ---------------------------------------------------------------------------
+
+const quarter = [
+  'statement_hdfc_2026_04.pdf',
+  'statement_hdfc_2026_05.pdf',
+  'statement_hdfc_2026_06.pdf',
+] as const;
+
+const fixture = (name: string) => readFileSync(join(FIXTURES, name));
+
+/** Attaches every file in the batch under the field the route expects. */
+function batchRequest(names: readonly string[], fields: Record<string, string> = {}) {
+  let req = request(app).post('/api/statements/parse-batch').set(authHeader());
+  for (const [key, value] of Object.entries({ accountId: ACCOUNT_ID, ...fields })) {
+    req = req.field(key, value);
+  }
+  for (const name of names) req = req.attach('files', fixture(name), name);
+  return req;
+}
+
+describe('POST /api/statements/parse-batch', () => {
+  it('reads a three-file quarter as one import', async () => {
+    const response = await batchRequest(quarter).expect(200);
+
+    expect(response.body.status).toBe('batch-preview');
+    expect(response.body.filesParsed).toBe(3);
+    expect(response.body.filesFailed).toBe(0);
+    expect(response.body.files.map((f: { fileName: string }) => f.fileName)).toEqual([...quarter]);
+    expect(response.body.files.every((f: { source: string }) => f.source === 'hdfc')).toBe(true);
+  });
+
+  it('numbers rows once across the batch, not once per file', async () => {
+    // Which is what lets a duplicate point at a row the user can find, and what
+    // lets the existing dedup see across files without knowing files exist.
+    const response = await batchRequest(quarter).expect(200);
+    const indexes = response.body.rows.map((r: { index: number }) => r.index);
+
+    expect(indexes).toEqual(indexes.map((_: number, i: number) => i + 1));
+    expect(new Set(indexes).size).toBe(indexes.length);
+  });
+
+  it('catches the rows May repeats from April', async () => {
+    // A real bank prints the tail of the previous period at the top of the
+    // next. Imported one file at a time, those rows arrive twice.
+    const response = await batchRequest(quarter).expect(200);
+
+    expect(response.body.crossFileDuplicateCount).toBeGreaterThan(0);
+    const crossFile = response.body.rows.filter(
+      (r: { duplicate: { reason: string } | null }) => r.duplicate?.reason?.includes('.pdf'),
+    );
+    expect(crossFile).toHaveLength(response.body.crossFileDuplicateCount);
+    expect(crossFile[0].duplicate.reason).toMatch(/statement_hdfc_2026_04\.pdf/);
+  });
+
+  it('tags every row with the file it came from', async () => {
+    const response = await batchRequest(quarter).expect(200);
+    const files = new Set(response.body.rows.map((r: { fileName: string }) => r.fileName));
+    expect([...files].sort()).toEqual([...quarter]);
+  });
+
+  it('lists a locked file rather than failing the whole batch', async () => {
+    const response = await batchRequest([quarter[0], 'statement_encrypted.pdf']).expect(200);
+
+    expect(response.body.filesParsed).toBe(1);
+    const locked = response.body.files.find(
+      (f: { fileName: string }) => f.fileName === 'statement_encrypted.pdf',
+    );
+    expect(locked.status).toBe('needs-password');
+    expect(locked.message).toMatch(/password-protected/i);
+    // The file that did parse is still there to import.
+    expect(response.body.totalRows).toBeGreaterThan(0);
+  });
+
+  it('unlocks a file when its password is supplied, by position', async () => {
+    const response = await batchRequest([quarter[0], 'statement_encrypted.pdf'], {
+      passwords: JSON.stringify({ 1: PASSWORD }),
+    }).expect(200);
+
+    expect(response.body.filesParsed).toBe(2);
+    expect(response.body.files[1].status).toBe('parsed');
+  });
+
+  it('says which password was wrong, for the file it was wrong for', async () => {
+    const response = await batchRequest([quarter[0], 'statement_encrypted.pdf'], {
+      passwords: JSON.stringify({ 1: 'not-it' }),
+    }).expect(200);
+
+    expect(response.body.files[1].status).toBe('wrong-password');
+    expect(response.body.files[1].message).toMatch(/did not open/i);
+  });
+
+  it('mixes formats in one batch, each read by its own adapter', async () => {
+    const response = await batchRequest([
+      'statement_sbi.pdf',
+      'statement_phonepe.pdf',
+      'statement_axis.pdf',
+    ]).expect(200);
+
+    expect(response.body.files.map((f: { source: string }) => f.source)).toEqual([
+      'sbi',
+      'phonepe',
+      'unknown',
+    ]);
+    expect(response.body.files.map((f: { via: string }) => f.via)).toEqual([
+      'adapter',
+      'adapter',
+      'layout',
+    ]);
+  });
+
+  it('carries the UPI fields through to the rows', async () => {
+    const response = await batchRequest(['statement_phonepe.pdf']).expect(200);
+    const rows = response.body.rows as { counterpartyRaw: string; upiVpa: string }[];
+
+    expect(rows.every((r) => r.counterpartyRaw)).toBe(true);
+    expect(rows.every((r) => r.upiVpa?.includes('@'))).toBe(true);
+  });
+
+  it('refuses an account belonging to somebody else', async () => {
+    db.accountFindFirst.mockResolvedValue(null);
+    await batchRequest([quarter[0]], { accountId: 'acct_someone_else' }).expect(404);
+  });
+
+  it('needs at least one file', async () => {
+    await request(app)
+      .post('/api/statements/parse-batch')
+      .set(authHeader())
+      .field('accountId', ACCOUNT_ID)
+      .expect(400);
+  });
+
+  it('is behind the session like every other data route', async () => {
+    await request(app)
+      .post('/api/statements/parse-batch')
+      .field('accountId', ACCOUNT_ID)
+      .attach('files', fixture(quarter[0]), quarter[0])
+      .expect(401);
+  });
+});
+
+describe('single-file parse, now that adapters exist', () => {
+  it.each([
+    ['statement_sbi.pdf', 'sbi', 'adapter'],
+    ['statement_hdfc.pdf', 'hdfc', 'adapter'],
+    ['statement_phonepe.pdf', 'phonepe', 'adapter'],
+    ['statement_axis.pdf', 'unknown', 'layout'],
+  ])('reads %s through %s', async (name, source, via) => {
+    const response = await request(app)
+      .post('/api/statements/parse')
+      .set(authHeader())
+      .field('accountId', ACCOUNT_ID)
+      .attach('file', fixture(name), name)
+      .expect(200);
+
+    expect(response.body.source).toBe(source);
+    expect(response.body.via).toBe(via);
+    expect(response.body.modelCalls).toBe(0);
+    expect(response.body.totalRows).toBeGreaterThan(0);
+  });
+});

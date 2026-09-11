@@ -33,7 +33,16 @@ import {
   type Resolution,
   type UploadPreview,
 } from '@/lib/transactions';
-import { inspectStatement, isWrongPassword, parseStatement } from '@/lib/statements';
+import {
+  ALLOWS_MULTIPLE,
+  inspectStatement,
+  isWrongPassword,
+  parseStatement,
+  parseStatementBatch,
+  PERIOD_LABELS,
+  type BatchPreview,
+  type StatementPeriod,
+} from '@/lib/statements';
 
 const PREVIEW_LIMIT = 20;
 
@@ -56,7 +65,16 @@ export function UploadPage() {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [accountId, setAccountId] = useState('');
+  /**
+   * Monthly is one statement; a quarter or a custom range is several, and the
+   * whole point of picking them together is that duplicate detection then runs
+   * across the lot rather than once per file.
+   */
+  const [period, setPeriod] = useState<StatementPeriod>('monthly');
   const [file, setFile] = useState<File | null>(null);
+  const [files, setFiles] = useState<File[]>([]);
+  const [batch, setBatch] = useState<BatchPreview | null>(null);
+  const [batchPasswords, setBatchPasswords] = useState<Record<number, string>>({});
   /** null until a PDF has been inspected; false means "no password needed". */
   const [requiresPassword, setRequiresPassword] = useState<boolean | null>(null);
   const [password, setPassword] = useState('');
@@ -67,6 +85,8 @@ export function UploadPage() {
   const [result, setResult] = useState<CommitResult | null>(null);
 
   const accounts = useQuery({ queryKey: ['accounts'], queryFn: fetchAccounts });
+
+  const multiple = ALLOWS_MULTIPLE[period];
 
   /**
    * A PDF is inspected the moment it is chosen, and only then does a password
@@ -83,17 +103,35 @@ export function UploadPage() {
     },
   });
 
-  function chooseFile(chosen: File | null) {
-    setFile(chosen);
+  /** Everything a new selection invalidates. */
+  function resetSelection() {
     setPreview(null);
+    setBatch(null);
     setNeedsMapping(null);
     setResult(null);
     setPassword('');
+    setBatchPasswords({});
     setRequiresPassword(null);
     setInspectError(null);
     uploadMutation.reset();
+    batchMutation.reset();
+  }
 
-    if (chosen && isPdf(chosen)) inspectMutation.mutate(chosen);
+  function chooseFiles(chosen: File[]) {
+    resetSelection();
+
+    if (multiple) {
+      setFiles(chosen);
+      setFile(null);
+      // No inspection here: with several files the answer is per file, and the
+      // batch preview is where it gets asked and answered.
+      return;
+    }
+
+    const one = chosen[0] ?? null;
+    setFiles([]);
+    setFile(one);
+    if (one && isPdf(one)) inspectMutation.mutate(one);
   }
 
   const uploadMutation = useMutation({
@@ -123,21 +161,68 @@ export function UploadPage() {
     },
   });
 
+  const batchMutation = useMutation({
+    mutationFn: () =>
+      parseStatementBatch({ files, accountId, passwords: batchPasswords }),
+    onSuccess: (data) => {
+      setResult(null);
+      setBatch(data);
+      // Likely duplicates default to skip, exactly as in a single-file import.
+      setResolutions(
+        Object.fromEntries(
+          data.rows.filter((r) => r.duplicate).map((r) => [r.index, 'skip' as Resolution]),
+        ),
+      );
+    },
+  });
+
   const commitMutation = useMutation({
-    mutationFn: () => commitImport({ accountId, rows: preview!.rows, resolutions }),
+    mutationFn: () =>
+      commitImport({ accountId, rows: (batch ?? preview!).rows, resolutions }),
     onSuccess: (data) => {
       setResult(data);
       setPreview(null);
+      setBatch(null);
       setNeedsMapping(null);
       setFile(null);
+      setFiles([]);
       if (fileInputRef.current) fileInputRef.current.value = '';
       void queryClient.invalidateQueries({ queryKey: ['transactions'] });
     },
   });
 
-  const duplicates = useMemo(() => preview?.rows.filter((row) => row.duplicate) ?? [], [preview]);
+  /**
+   * The review card reads from this, so a batch and a single file get the same
+   * screen — the same duplicate tab, the same keep/skip toggles and the same
+   * Confirm Import. Two cards that did the same job would drift apart.
+   */
+  const review = useMemo(() => {
+    if (batch) {
+      return {
+        totalRows: batch.totalRows,
+        duplicateCount: batch.duplicateCount,
+        rows: batch.rows,
+        skippedRows: batch.files.flatMap((f) => f.skippedRows),
+        heading: `${batch.totalRows} rows from ${batch.filesParsed} file${batch.filesParsed === 1 ? '' : 's'}`,
+      };
+    }
+    if (preview) {
+      return {
+        totalRows: preview.totalRows,
+        duplicateCount: preview.duplicateCount,
+        rows: preview.rows,
+        skippedRows: preview.skippedRows,
+        heading: `${preview.totalRows} rows parsed from ${preview.fileName}${preview.preset ? ` using the ${preview.preset} format` : ''}`,
+      };
+    }
+    return null;
+  }, [batch, preview]);
+
+  const reviewRows = useMemo(() => review?.rows ?? [], [review]);
+  const duplicates = useMemo(() => reviewRows.filter((row) => row.duplicate), [reviewRows]);
   const skipCount = duplicates.filter((row) => resolutions[row.index] === 'skip').length;
 
+  const chosenCount = multiple ? files.length : file ? 1 : 0;
   const pdfChosen = Boolean(file && isPdf(file));
   // A PDF cannot be sent until it has been inspected, and an encrypted one
   // cannot be sent without the password the inspection said it needs.
@@ -146,10 +231,21 @@ export function UploadPage() {
     (requiresPassword === false) ||
     (requiresPassword === true && password.trim().length > 0);
   const canUpload =
-    Boolean(file && accountId) && pdfReady && !uploadMutation.isPending && !inspectMutation.isPending;
+    chosenCount > 0 &&
+    Boolean(accountId) &&
+    (multiple || pdfReady) &&
+    !uploadMutation.isPending &&
+    !batchMutation.isPending &&
+    !inspectMutation.isPending;
 
   function submitUpload(mapping?: ColumnMapping) {
-    if (!file || !accountId) return;
+    if (!accountId) return;
+    if (multiple) {
+      if (files.length === 0) return;
+      batchMutation.mutate();
+      return;
+    }
+    if (!file) return;
     uploadMutation.mutate({ file, accountId, mapping });
   }
 
@@ -192,26 +288,61 @@ export function UploadPage() {
             </Select>
           </div>
 
+          <div className="space-y-2">
+            <label className="text-sm font-medium" htmlFor="period">
+              Statement period
+            </label>
+            <Select
+              value={period}
+              onValueChange={(value) => {
+                setPeriod(value as StatementPeriod);
+                setFile(null);
+                setFiles([]);
+                resetSelection();
+                if (fileInputRef.current) fileInputRef.current.value = '';
+              }}
+            >
+              <SelectTrigger aria-label="Statement period" className="w-44">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {(Object.keys(PERIOD_LABELS) as StatementPeriod[]).map((value) => (
+                  <SelectItem key={value} value={value}>
+                    {PERIOD_LABELS[value]}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
           <div className="flex-1 space-y-2">
             <label className="text-sm font-medium" htmlFor="statement">
-              CSV or PDF file
+              {multiple ? 'CSV or PDF files' : 'CSV or PDF file'}
             </label>
             <Input
               id="statement"
               ref={fileInputRef}
               type="file"
+              multiple={multiple}
               accept=".csv,text/csv,.pdf,application/pdf"
-              aria-label="CSV or PDF file"
-              onChange={(event) => chooseFile(event.target.files?.[0] ?? null)}
+              aria-label={multiple ? 'CSV or PDF files' : 'CSV or PDF file'}
+              onChange={(event) => chooseFiles([...(event.target.files ?? [])])}
             />
+            {multiple && (
+              <p className="text-muted-foreground text-xs">
+                {chosenCount > 0
+                  ? `${chosenCount} file${chosenCount === 1 ? '' : 's'} selected — duplicates are checked across all of them.`
+                  : 'Choose every statement in the period. Duplicates are checked across all of them.'}
+              </p>
+            )}
           </div>
 
           <Button onClick={() => submitUpload()} disabled={!canUpload}>
-            {uploadMutation.isPending ? 'Parsing…' : 'Upload'}
+            {uploadMutation.isPending || batchMutation.isPending ? 'Parsing…' : 'Upload'}
           </Button>
         </CardContent>
 
-        {pdfChosen && (
+        {!multiple && pdfChosen && (
           <CardContent className="pt-0">
             {inspectMutation.isPending && (
               <output aria-live="polite" className="text-muted-foreground text-sm">
@@ -260,6 +391,12 @@ export function UploadPage() {
         </p>
       )}
 
+      {batchMutation.isError && (
+        <p role="alert" className="text-destructive text-sm">
+          {errorMessage(batchMutation.error)}
+        </p>
+      )}
+
       {uploadMutation.isError && (
         <p role="alert" className="text-destructive text-sm">
           {errorMessage(uploadMutation.error)}
@@ -276,18 +413,112 @@ export function UploadPage() {
         />
       )}
 
-      {preview && (
+      {batch && (
         <Card>
           <CardHeader>
-            <CardTitle>2. Review</CardTitle>
+            <CardTitle>2. Files</CardTitle>
             <CardDescription>
-              {preview.totalRows} rows parsed from <code>{preview.fileName}</code>
-              {preview.preset ? ` using the ${preview.preset} format` : ''}.{' '}
-              {preview.duplicateCount > 0
-                ? `${preview.duplicateCount} look like duplicates and are set to skip.`
+              {batch.filesParsed} of {batch.files.length} file
+              {batch.files.length === 1 ? '' : 's'} parsed, {batch.totalRows} rows in total.{' '}
+              {batch.duplicateCount > 0
+                ? `${batch.duplicateCount} look like duplicates and are set to skip` +
+                  (batch.crossFileDuplicateCount > 0
+                    ? `, ${batch.crossFileDuplicateCount} of them repeated between files.`
+                    : '.')
                 : 'No duplicates found.'}
-              {preview.skippedRows.length > 0
-                ? ` ${preview.skippedRows.length} row(s) could not be parsed and will be ignored.`
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <Table aria-label="Files in this import">
+              <TableHeader>
+                <TableRow>
+                  <TableHead>File</TableHead>
+                  <TableHead>Detected format</TableHead>
+                  <TableHead className="text-right">Rows</TableHead>
+                  <TableHead>Status</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {batch.files.map((f) => (
+                  <TableRow key={f.index}>
+                    <TableCell className="font-medium">{f.fileName}</TableCell>
+                    <TableCell className="text-muted-foreground">
+                      {f.sourceLabel ?? '—'}
+                      {f.via === 'layout' && ' (read by layout)'}
+                      {f.via === 'model' && ' (read by the fallback)'}
+                    </TableCell>
+                    <TableCell className="text-right tabular-nums">
+                      {f.status === 'parsed' ? f.rowCount : '—'}
+                    </TableCell>
+                    <TableCell>
+                      {f.status === 'parsed' ? (
+                        <Badge variant="secondary">Parsed OK</Badge>
+                      ) : (
+                        <div className="space-y-1">
+                          <Badge variant="destructive">
+                            {f.status === 'needs-password'
+                              ? 'Needs password'
+                              : f.status === 'wrong-password'
+                                ? 'Wrong password'
+                                : 'Failed to parse'}
+                          </Badge>
+                          {(f.status === 'needs-password' || f.status === 'wrong-password') && (
+                            <Input
+                              type="password"
+                              autoComplete="off"
+                              className="h-8 max-w-56"
+                              aria-label={`Password for ${f.fileName}`}
+                              placeholder="Password for this file"
+                              value={batchPasswords[f.index] ?? ''}
+                              onChange={(event) =>
+                                setBatchPasswords((current) => ({
+                                  ...current,
+                                  [f.index]: event.target.value,
+                                }))
+                              }
+                            />
+                          )}
+                          {f.message && (
+                            <p className="text-muted-foreground text-xs">{f.message}</p>
+                          )}
+                        </div>
+                      )}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+
+            {batch.filesFailed > 0 && (
+              <div className="flex items-center gap-3">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={batchMutation.isPending}
+                  onClick={() => batchMutation.mutate()}
+                >
+                  {batchMutation.isPending ? 'Retrying…' : 'Retry the files that failed'}
+                </Button>
+                <p className="text-muted-foreground text-xs">
+                  The files that parsed are still ready to import.
+                </p>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
+      {review && review.totalRows > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle>{batch ? '3. Review' : '2. Review'}</CardTitle>
+            <CardDescription>
+              {review.heading}.{' '}
+              {review.duplicateCount > 0
+                ? `${review.duplicateCount} look like duplicates and are set to skip.`
+                : 'No duplicates found.'}
+              {review.skippedRows.length > 0
+                ? ` ${review.skippedRows.length} row(s) could not be parsed and will be ignored.`
                 : ''}
             </CardDescription>
           </CardHeader>
@@ -296,13 +527,13 @@ export function UploadPage() {
               <TabsList>
                 <TabsTrigger value="rows">First {PREVIEW_LIMIT} rows</TabsTrigger>
                 <TabsTrigger value="duplicates">
-                  Flagged duplicates ({preview.duplicateCount})
+                  Flagged duplicates ({review.duplicateCount})
                 </TabsTrigger>
               </TabsList>
 
               <TabsContent value="rows" className="pt-4">
                 <PreviewTable
-                  rows={preview.rows.slice(0, PREVIEW_LIMIT)}
+                  rows={review.rows.slice(0, PREVIEW_LIMIT)}
                   resolutions={resolutions}
                   onToggle={(index, choice) =>
                     setResolutions((prev) => ({ ...prev, [index]: choice }))
@@ -330,7 +561,7 @@ export function UploadPage() {
                 {commitMutation.isPending ? 'Importing…' : 'Confirm Import'}
               </Button>
               <span className="text-muted-foreground text-sm">
-                {preview.totalRows - skipCount} of {preview.totalRows} rows will be imported
+                {review.totalRows - skipCount} of {review.totalRows} rows will be imported
                 {skipCount > 0 ? `, ${skipCount} skipped` : ''}.
               </span>
             </div>
