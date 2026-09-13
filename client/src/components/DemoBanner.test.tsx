@@ -17,6 +17,7 @@ const session = (isDemo: boolean) => ({
   isDemo,
   signIn: vi.fn(),
   signUp: vi.fn(),
+  signInWithGoogle: vi.fn(),
   startDemo: vi.fn(),
   signOut,
 });

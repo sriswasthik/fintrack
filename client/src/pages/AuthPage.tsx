@@ -2,6 +2,8 @@ import { useState, type FormEvent } from 'react';
 import { Link, Navigate, useLocation, useNavigate } from 'react-router-dom';
 
 import { DemoButton } from '@/components/DemoButton';
+import { GoogleSignInButton } from '@/components/GoogleSignInButton';
+import { useGoogleSignInAvailable } from '@/context/google-auth';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -63,6 +65,7 @@ function Field({
 export function AuthPage({ mode }: { mode: 'login' | 'register' }) {
   const copy = COPY[mode];
   const { user, isRestoring, signIn, signUp } = useAuth();
+  const googleAvailable = useGoogleSignInAvailable();
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -110,6 +113,24 @@ export function AuthPage({ mode }: { mode: 'login' | 'register' }) {
           <CardDescription>{copy.description}</CardDescription>
         </CardHeader>
         <CardContent>
+          {/* Above the form on purpose: it is the shorter path, and a person
+              who would rather use it should see it before typing a password.
+              Renders nothing when the build has no Google client id. */}
+          <GoogleSignInButton
+            label={mode === 'login' ? 'signin_with' : 'signup_with'}
+            onSignedIn={() => navigate(destination, { replace: true })}
+          />
+
+          {/* The divider belongs to the button: with no button above it, an
+              "or" separates the form from nothing. */}
+          {googleAvailable && (
+            <div className="my-4 flex items-center gap-3">
+              <span className="bg-border h-px flex-1" />
+              <span className="text-muted-foreground text-xs">or</span>
+              <span className="bg-border h-px flex-1" />
+            </div>
+          )}
+
           <form onSubmit={submit} className="space-y-4" noValidate>
             {mode === 'register' && (
               <Field
