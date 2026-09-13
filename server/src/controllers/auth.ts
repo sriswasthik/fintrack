@@ -24,6 +24,11 @@ import {
 } from '../services/auth/passwords';
 import { DEMO_SESSION_TTL_SECONDS, demoModeEnabled, demoUserEmail } from '../services/auth/demo';
 import {
+  InvalidGoogleTokenError,
+  resolveGoogleUser,
+  verifyGoogleIdToken,
+} from '../services/auth/google';
+import {
   ACCESS_TOKEN_TTL_SECONDS,
   hashToken,
   issueRefreshToken,
@@ -102,7 +107,11 @@ export const login: RequestHandler = async (req, res) => {
     select: { id: true, email: true, name: true, passwordHash: true },
   });
 
-  if (!user) {
+  // A Google-only account (Phase 16) has no hash to compare against. It is
+  // handled here beside the missing-account case, and answers identically:
+  // the same 401, after the same bcrypt-shaped delay. Anything else would turn
+  // this endpoint into an oracle for which addresses signed up with Google.
+  if (!user?.passwordHash) {
     // Spend the time bcrypt would have spent, so a missing account and a wrong
     // password are not distinguishable by how long the answer takes.
     await burnPasswordTime(password);
@@ -114,6 +123,48 @@ export const login: RequestHandler = async (req, res) => {
   }
 
   res.json(await startSession(res, user));
+};
+
+const googleSchema = z.object({
+  /** The ID token Google handed the browser. Never trusted until verified. */
+  credential: z.string().min(1, 'A Google credential is required').max(8192),
+});
+
+/**
+ * POST /api/auth/google
+ *
+ * Verifies the ID token, finds or creates the account behind it, and starts
+ * exactly the session `login` and `register` start: the same 15-minute access
+ * token in the body, the same rotating httpOnly refresh cookie. That sameness
+ * is the design — every protected route, the refresh rotation and the demo
+ * guard all carry on working without knowing this endpoint exists.
+ *
+ * The response carries `isNewUser` so Phase 17 can decide whether to send a
+ * welcome email. `resolution` says which of the three paths ran, which is
+ * useful in a log and harmless to the caller: it tells them only about their
+ * own account.
+ */
+export const googleSignIn: RequestHandler = async (req, res) => {
+  const { credential } = googleSchema.parse(req.body);
+
+  let identity;
+  try {
+    identity = await verifyGoogleIdToken(credential);
+  } catch (error) {
+    // A visitor sending a bad token is a 401. A deployment with no
+    // GOOGLE_CLIENT_ID is not — that is `AuthConfigurationError`, which is left
+    // to rise to the handler that turns it into a 500 saying what to set.
+    if (error instanceof InvalidGoogleTokenError) throw new HttpError(401, error.message);
+    throw error;
+  }
+
+  const { user, resolution, isNewUser } = await resolveGoogleUser(getPrisma(), identity);
+  const session = await startSession(res, user);
+
+  // 201 when this request created the account, 200 when it signed in or linked
+  // an account that already existed — the same distinction `register` and
+  // `login` already draw.
+  res.status(isNewUser ? 201 : 200).json({ ...session, isNewUser, resolution });
 };
 
 /** The refresh token on the request, from the cookie or the body. */
