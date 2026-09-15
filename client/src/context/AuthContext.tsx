@@ -8,6 +8,7 @@ import {
   logout as logoutRequest,
   refreshSession,
   register as registerRequest,
+  signInWithGoogle as googleRequest,
   startDemo as startDemoRequest,
   type AuthUser,
   type Session,
@@ -144,6 +145,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const session = await registerRequest(registration);
         queryClient.clear();
         applySession.current(session);
+      },
+      signInWithGoogle: async (credential) => {
+        const session = await googleRequest(credential);
+        queryClient.clear();
+        applySession.current(session);
+        // Whether this created the account. The session itself is identical to
+        // one from a password sign-in, which is the point.
+        return { isNewUser: session.isNewUser === true };
       },
       startDemo: async () => {
         const session = await startDemoRequest();

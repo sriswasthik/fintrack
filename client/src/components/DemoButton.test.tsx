@@ -41,6 +41,7 @@ beforeEach(() => {
     isDemo: false,
     signIn: vi.fn(),
     signUp: vi.fn(),
+    signInWithGoogle: vi.fn(),
     startDemo,
     signOut: vi.fn(),
   });

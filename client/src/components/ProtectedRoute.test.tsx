@@ -14,6 +14,7 @@ const session = (over: Partial<ReturnType<typeof useAuth>> = {}) => ({
   isDemo: false,
   signIn: vi.fn(),
   signUp: vi.fn(),
+  signInWithGoogle: vi.fn(),
   startDemo: vi.fn(),
   signOut: vi.fn(),
   ...over,

@@ -15,6 +15,7 @@ vi.mock('@/context/auth-context', () => ({
     isDemo: false,
     signIn: vi.fn(),
     signUp: vi.fn(),
+    signInWithGoogle: vi.fn(),
     startDemo: vi.fn(),
     signOut: vi.fn(),
   }),

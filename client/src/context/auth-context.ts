@@ -14,6 +14,11 @@ export interface AuthState {
   isDemo: boolean;
   signIn: (credentials: Credentials) => Promise<void>;
   signUp: (registration: Registration) => Promise<void>;
+  /**
+   * Signs in with a Google ID token. Resolves to whether the account was
+   * created by this request, which the caller uses only to choose wording.
+   */
+  signInWithGoogle: (credential: string) => Promise<{ isNewUser: boolean }>;
   startDemo: () => Promise<void>;
   signOut: () => Promise<void>;
 }

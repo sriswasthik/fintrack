@@ -8,12 +8,40 @@ export interface AuthUser {
   name: string | null;
 }
 
+/**
+ * The Google client id this build was compiled with.
+ *
+ * Empty when the deployment does not offer Google sign-in, which is a normal
+ * state rather than an error: the buttons simply do not render. Only
+ * `VITE_`-prefixed values reach the bundle, and a client id is public by
+ * design — it identifies the app to Google, it does not authorise anything.
+ *
+ * Read on each call rather than captured at module load. Vite inlines the value
+ * at build time either way, so production is unaffected; what it buys is a test
+ * that can turn the feature on and off without reloading modules.
+ */
+export function googleClientId(): string {
+  return import.meta.env.VITE_GOOGLE_CLIENT_ID ?? '';
+}
+
+export function googleSignInEnabled(): boolean {
+  return googleClientId().length > 0;
+}
+
 export interface Session {
   accessToken: string;
   expiresIn: number;
   user: AuthUser;
   /** True for the shared read-only sample account. */
   demo?: boolean;
+  /**
+   * Google sign-in only. True when this request is what created the account —
+   * not merely the first time Google was used on it. Phase 17 sends a welcome
+   * email from this.
+   */
+  isNewUser?: boolean;
+  /** Which of the three account paths ran. Returned by the Google endpoint. */
+  resolution?: 'signed-in' | 'linked' | 'created';
 }
 
 export interface Credentials {
@@ -47,6 +75,19 @@ export async function register(body: Registration): Promise<Session> {
 
 export async function login(body: Credentials): Promise<Session> {
   const { data } = await authApi.post<Session>('/api/auth/login', body);
+  return data;
+}
+
+/**
+ * Exchanges a Google ID token for the same session the password routes issue.
+ *
+ * The credential is the JWT Google handed the browser. Nothing is read out of
+ * it here — the server verifies the signature and takes the email, name and
+ * picture from the verified payload, because anything this code parsed would
+ * be as forgeable as the request that carried it.
+ */
+export async function signInWithGoogle(credential: string): Promise<Session> {
+  const { data } = await authApi.post<Session>('/api/auth/google', { credential });
   return data;
 }
 

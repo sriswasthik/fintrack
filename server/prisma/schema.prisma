@@ -85,10 +85,25 @@ enum AnomalySeverity {
 }
 
 model User {
-  id           String  @id @default(cuid())
-  email        String  @unique
-  passwordHash String
-  name         String?
+  id    String @id @default(cuid())
+  email String @unique
+
+  /// Null for an account that has only ever signed in with Google (Phase 16).
+  /// The brief calls for creating such a user "with no password set", so this
+  /// had to stop being required — which makes every password comparison a
+  /// place that must handle its absence rather than assume a string.
+  passwordHash String?
+
+  /// Google's `sub` claim: stable for the life of the Google account, and the
+  /// thing an account is matched on first. Unique, so two FinTrack users can
+  /// never claim the same Google identity.
+  googleId String? @unique
+
+  /// Avatar URL from the Google profile. Nullable and purely cosmetic — it is
+  /// whatever Google last told us, not something the user set here.
+  picture String?
+
+  name String?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
