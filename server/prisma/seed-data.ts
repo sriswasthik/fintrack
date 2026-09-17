@@ -60,7 +60,11 @@ export type EdgeCase =
   | 'p2p-in'
   | 'large-one-off'
   | 'variable-income'
-  | 'manual-override';
+  | 'manual-override'
+  | 'emi'
+  | 'emi-decoy'
+  | 'sip'
+  | 'festive';
 
 export interface GeneratedTransaction {
   /** 1-based row number in test-data/synthetic_transactions.csv. Assigned after sorting. */
@@ -248,7 +252,11 @@ const STREAMS: SpendStream[] = [
       { raw: 'UBER   *TRIP', normalized: 'UBER', category: 'TRANSPORTATION', mangled: true },
       { raw: 'OLA    *RIDE FRI', normalized: 'OLA', category: 'TRANSPORTATION', mangled: true },
       { raw: 'INDIAN OIL 5748%%%%', normalized: 'INDIAN OIL', category: 'TRANSPORTATION' },
-      { raw: 'BHARAT PETROLEUM 0%%%%%%', normalized: 'BHARAT PETROLEUM', category: 'TRANSPORTATION' },
+      {
+        raw: 'BHARAT PETROLEUM 0%%%%%%',
+        normalized: 'BHARAT PETROLEUM',
+        category: 'TRANSPORTATION',
+      },
       { raw: 'DMRC*METRO RECHARGE', normalized: 'DMRC', category: 'TRANSPORTATION', mangled: true },
     ],
   },
@@ -356,7 +364,12 @@ const STREAMS: SpendStream[] = [
     merchants: [
       { raw: 'AIRBNB * HM4X%%%%', normalized: 'AIRBNB', category: 'TRAVEL', mangled: true },
       { raw: 'TAJ HOTELS #0%%%', normalized: 'TAJ HOTELS', category: 'TRAVEL' },
-      { raw: 'MAKEMYTRIP*ITIN 7%%%%%%', normalized: 'MAKEMYTRIP', category: 'TRAVEL', mangled: true },
+      {
+        raw: 'MAKEMYTRIP*ITIN 7%%%%%%',
+        normalized: 'MAKEMYTRIP',
+        category: 'TRAVEL',
+        mangled: true,
+      },
       { raw: 'IRCTC ETICKET', normalized: 'IRCTC', category: 'TRAVEL' },
     ],
   },
@@ -397,6 +410,19 @@ interface Recurring {
   priceChange?: { fromMonthIndex: number; amount: number };
   edgeCases?: EdgeCase[];
 }
+
+/**
+ * The Phase 19 monthly commitments: an instalment plan and two SIPs.
+ *
+ * Kept apart from `RECURRING` because they are generated at the very end of the
+ * dataset — see the comment there — but they are monthly, fixed-amount and
+ * fixed-day, so anything that reasons about recurring charges sees them.
+ */
+export const FIXED_COMMITMENTS = [
+  'BAJAJ FINANCE EMI',
+  'ZERODHA COIN SIP',
+  'AXIS MUTUAL FUND SIP',
+] as const;
 
 export const RECURRING: Recurring[] = [
   // Housing, utilities, insurance — paid from checking.
@@ -1266,6 +1292,154 @@ export function generateDataset(): GeneratedTransaction[] {
     });
   });
 
+  // ---- Phase 19: fixed monthly commitments ------------------------------
+  // Deliberately the last section in the generator. Every draft above draws
+  // from the same `rng` stream, so anything inserted earlier would re-roll the
+  // whole dataset; appending here leaves all 704 existing rows byte-identical.
+
+  /** A consumer-durable EMI: the same rupee, the same day, every month. */
+  months.forEach((monthStart) => {
+    const date = dayOfMonth(monthStart, 5, START_DATE, REFERENCE_DATE);
+    if (!date) return;
+    add({
+      date: toIso(date),
+      description: 'BAJAJ FINANCE EMI 4471902',
+      rawMerchant: 'BAJAJ FINANCE EMI',
+      normalizedMerchant: 'BAJAJ FINANCE EMI',
+      amount: 18450,
+      account: 'checking',
+      expectedCategory: 'EMI_LOAN',
+      edgeCases: ['emi'],
+    });
+  });
+
+  /**
+   * The false positive Phase 19 has to reject: two unrelated repayments to a
+   * lender, months apart, for roughly the same money. It reads like an EMI in
+   * every way except the two that matter — it does not repeat monthly and it
+   * does not repeat enough.
+   */
+  [
+    { monthIndex: 0, day: 19, amount: 18500 },
+    { monthIndex: 3, day: 23, amount: 18300 },
+  ].forEach((one) => {
+    const monthStart = months[one.monthIndex];
+    if (!monthStart) return;
+    const date = dayOfMonth(monthStart, one.day, START_DATE, REFERENCE_DATE);
+    if (!date) return;
+    add({
+      date: toIso(date),
+      description: 'MUTHOOT FINANCE',
+      rawMerchant: 'MUTHOOT FINANCE',
+      normalizedMerchant: 'MUTHOOT FINANCE',
+      amount: one.amount,
+      account: 'checking',
+      expectedCategory: 'EMI_LOAN',
+      edgeCases: ['emi-decoy'],
+    });
+  });
+
+  /** Two SIPs, so the monthly outgo is a sum rather than a single figure. */
+  [
+    {
+      day: 7,
+      description: 'ZERODHA COIN SIP',
+      raw: 'ZERODHA COIN SIP',
+      normalized: 'ZERODHA COIN SIP',
+      amount: 5000,
+    },
+    {
+      day: 12,
+      description: 'AXIS MUTUAL FUND SIP',
+      raw: 'AXIS MUTUAL FUND SIP',
+      normalized: 'AXIS MUTUAL FUND SIP',
+      amount: 2500,
+    },
+  ].forEach((sip) => {
+    months.forEach((monthStart) => {
+      const date = dayOfMonth(monthStart, sip.day, START_DATE, REFERENCE_DATE);
+      if (!date) return;
+      add({
+        date: toIso(date),
+        description: sip.description,
+        rawMerchant: sip.raw,
+        normalizedMerchant: sip.normalized,
+        amount: sip.amount,
+        account: 'checking',
+        expectedCategory: 'INVESTMENTS',
+        edgeCases: ['sip'],
+      });
+    });
+  });
+
+  /**
+   * A festive-season bump, in the first week of September.
+   *
+   * September is the only month in this window that overlaps a festive one —
+   * Onam and Ganesh Chaturthi fall here, and the big online sales that lead
+   * into Dussehra and Diwali open at the end of it. The window stops on the
+   * 7th, so the bump is concentrated in those days, which is also what a
+   * sale-launch purchase actually looks like: the television is bought on the
+   * first morning of the sale, not spread evenly over the month.
+   *
+   * Deliberately only two of the three categories the detector watches. Dining
+   * is left alone, because a plausible festive week does not add nineteen
+   * thousand rupees of restaurant meals, and a fixture that fires every rule at
+   * once proves less than one that fires the rules it should.
+   */
+  [
+    {
+      day: 1,
+      raw: 'RELIANCE DIGITAL',
+      normalized: 'RELIANCE DIGITAL',
+      amount: 28990,
+      category: 'SHOPPING' as Category,
+    },
+    {
+      day: 2,
+      raw: 'MYNTRA #482',
+      normalized: 'MYNTRA',
+      amount: 8450,
+      category: 'SHOPPING' as Category,
+    },
+    {
+      day: 2,
+      raw: 'FERNS N PETALS.COM',
+      normalized: 'FERNS N PETALS',
+      amount: 4800,
+      category: 'GIFTS_DONATIONS' as Category,
+    },
+    {
+      day: 4,
+      raw: 'FERNS N PETALS.COM',
+      normalized: 'FERNS N PETALS',
+      amount: 3900,
+      category: 'GIFTS_DONATIONS' as Category,
+    },
+    {
+      day: 5,
+      raw: 'DONATION*GOONJ',
+      normalized: 'GOONJ',
+      amount: 3900,
+      category: 'GIFTS_DONATIONS' as Category,
+    },
+  ].forEach((f) => {
+    const monthStart = months[months.length - 1];
+    if (!monthStart) return;
+    const date = dayOfMonth(monthStart, f.day, START_DATE, REFERENCE_DATE);
+    if (!date) return;
+    add({
+      date: toIso(date),
+      description: f.raw,
+      rawMerchant: f.raw,
+      normalizedMerchant: f.normalized,
+      amount: f.amount,
+      account: 'credit',
+      expectedCategory: f.category,
+      edgeCases: ['festive'],
+    });
+  });
+
   // ---- Sort and assign the row numbers the README refers to -------------
   const ordinal = new Map<Draft, number>();
   drafts.forEach((d, i) => ordinal.set(d, i));
@@ -1299,6 +1473,14 @@ export function transactionsByEdgeCase(
  * recurring-charge classifier against this, and a hand-kept copy silently went
  * stale the moment the merchant names changed.
  */
+/**
+ * Every merchant the generator bills on a fixed day of the month.
+ *
+ * `RECURRING` covers the bills and subscriptions. The Phase 19 commitments are
+ * generated separately — they are not bills — but they bill on exactly the same
+ * shape, so Phase 6's recurring-charge detector finds them too and this list
+ * has to say so.
+ */
 export const MONTHLY_BILL_MERCHANTS: string[] = [
-  ...new Set(RECURRING.map((r) => r.normalized)),
+  ...new Set([...RECURRING.map((r) => r.normalized), ...FIXED_COMMITMENTS]),
 ].sort();
