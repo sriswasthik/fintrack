@@ -42,6 +42,7 @@
     "multer": "^2.3.0",
     "papaparse": "^5.7.0",
     "pdfjs-dist": "^6.3.289",
+    "resend": "^6.28.1",
     "zod": "^4.5.4"
   },
   "devDependencies": {
