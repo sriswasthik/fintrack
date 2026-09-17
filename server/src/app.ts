@@ -13,6 +13,7 @@ import { insightsRouter } from './routes/insights';
 import { payeesRouter } from './routes/payees';
 import { statementsRouter } from './routes/statements';
 import { summaryRouter } from './routes/summary';
+import { totalsRouter } from './routes/totals';
 import { transactionsRouter } from './routes/transactions';
 
 /**
@@ -55,6 +56,7 @@ export function createApp() {
   app.use('/api', session, payeesRouter);
   app.use('/api', session, statementsRouter);
   app.use('/api', session, summaryRouter);
+  app.use('/api', session, totalsRouter);
   app.use('/api', session, transactionsRouter);
 
   app.use(notFoundHandler);
