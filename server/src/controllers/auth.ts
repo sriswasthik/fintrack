@@ -23,6 +23,7 @@ import {
   verifyPassword,
 } from '../services/auth/passwords';
 import { DEMO_SESSION_TTL_SECONDS, demoModeEnabled, demoUserEmail } from '../services/auth/demo';
+import { sendWelcomeEmail } from '../services/email/welcome';
 import {
   InvalidGoogleTokenError,
   resolveGoogleUser,
@@ -97,6 +98,11 @@ export const register: RequestHandler = async (req, res) => {
   });
 
   res.status(201).json(await startSession(res, user));
+
+  // After the response, and deliberately not awaited: a slow or broken mail
+  // provider must not hold a registration open or turn a created account into
+  // a 500. `sendWelcomeEmail` cannot throw and cannot reject (Phase 17).
+  sendWelcomeEmail(user);
 };
 
 export const login: RequestHandler = async (req, res) => {
@@ -165,6 +171,11 @@ export const googleSignIn: RequestHandler = async (req, res) => {
   // an account that already existed — the same distinction `register` and
   // `login` already draw.
   res.status(isNewUser ? 201 : 200).json({ ...session, isNewUser, resolution });
+
+  // Only a genuinely new account is welcomed. Linking Google to an account that
+  // already existed, and every repeat sign-in, are not first-ever signups — and
+  // `isNewUser` is the flag Phase 16 added to say which is which.
+  if (isNewUser) sendWelcomeEmail(user);
 };
 
 /** The refresh token on the request, from the cookie or the body. */
