@@ -132,13 +132,33 @@ DATABASE_URL=
 ANTHROPIC_API_KEY=
 JWT_ACCESS_SECRET=
 JWT_REFRESH_SECRET=
+GOOGLE_CLIENT_ID=
+RESEND_API_KEY=
+EMAIL_FROM=
+APP_URL=
 CORS_ORIGIN=http://localhost:5173
 PORT=4000
 ```
 
+**Email provider: Resend** (Phase 17). Chosen over Nodemailer + SMTP because the
+integration is an API key and an HTTPS call — no connection pool, no SMTP
+credentials to rotate, no port 587 to negotiate with a hosting platform. The
+dependency is contained in `server/src/services/email/send.ts`; everything above
+it calls `sendEmail`, so moving to SMTP later means rewriting one function.
+`RESEND_API_KEY` and `EMAIL_FROM` (an address on a domain verified with Resend)
+turn sending on; with either unset, mail is skipped and the reason logged rather
+than failing anything. `APP_URL` is where links in an email point, falling back
+to `CORS_ORIGIN`.
+
+**`GOOGLE_CLIENT_ID`** (Phase 16) is the OAuth 2.0 Web client ID from the Google
+Cloud console, and must match the client's `VITE_GOOGLE_CLIENT_ID`. There is
+deliberately no client *secret*: the browser runs the flow and the server
+verifies the resulting ID token against Google's public keys.
+
 **`client/.env`**
 ```
 VITE_API_BASE_URL=http://localhost:4000
+VITE_GOOGLE_CLIENT_ID=
 ```
 Only variables prefixed `VITE_` are ever exposed to the browser bundle — never put a secret there.
 
