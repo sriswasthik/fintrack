@@ -309,9 +309,22 @@ describe('false positives', () => {
     // A panel nobody reads is worse than no panel. 700 transactions across six
     // months should yield single digits, and every one of them should be a
     // finding a person would act on.
-    expect(SEEDED).toHaveLength(704);
-    expect(ALL_SEEDED_FLAGS.length).toBeLessThanOrEqual(12);
+    expect(SEEDED).toHaveLength(731);
+    // The ceiling moved from 12 to 18 with Phase 19, and the four extra flags
+    // are all real: the gold-loan decoy makes June a two-instalment month, and
+    // the September festive rows are a genuine gifts spike plus two genuinely
+    // large purchases. Nothing new is a false positive — in particular the EMI
+    // and the two SIPs are *not* flagged as new recurring charges, because they
+    // start with the window and `newChargeMinHistoryDays` holds.
+    expect(ALL_SEEDED_FLAGS.length).toBeLessThanOrEqual(18);
     expect(ALL_SEEDED_FLAGS.length).toBeGreaterThanOrEqual(5);
+    expect(
+      ALL_SEEDED_FLAGS.filter(
+        (f) =>
+          f.type === 'NEW_RECURRING_CHARGE' &&
+          /BAJAJ FINANCE EMI|ZERODHA COIN SIP|AXIS MUTUAL FUND SIP/.test(f.explanation),
+      ),
+    ).toEqual([]);
   });
 });
 
@@ -480,9 +493,7 @@ describe('detectSubscriptionPriceIncreases', () => {
   });
 
   it('ignores a fall', () => {
-    expect(detectSubscriptionPriceIncreases(raised(649, 499), { month: '2026-06' })).toEqual(
-      [],
-    );
+    expect(detectSubscriptionPriceIncreases(raised(649, 499), { month: '2026-06' })).toEqual([]);
   });
 
   it('ignores a rise too small to be worth telling anyone about', () => {

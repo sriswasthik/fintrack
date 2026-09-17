@@ -9,6 +9,7 @@ import { accountsRouter } from './routes/accounts';
 import { authRouter } from './routes/auth';
 import { dashboardRouter } from './routes/dashboard';
 import { healthRouter } from './routes/health';
+import { indiaRouter } from './routes/india';
 import { insightsRouter } from './routes/insights';
 import { payeesRouter } from './routes/payees';
 import { statementsRouter } from './routes/statements';
@@ -52,6 +53,7 @@ export function createApp() {
 
   app.use('/api', session, accountsRouter);
   app.use('/api', session, dashboardRouter);
+  app.use('/api', session, indiaRouter);
   app.use('/api', session, insightsRouter);
   app.use('/api', session, payeesRouter);
   app.use('/api', session, statementsRouter);

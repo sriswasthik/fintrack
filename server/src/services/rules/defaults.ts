@@ -762,6 +762,18 @@ export const DEFAULT_RULES: RuleDefinition[] = [
     '\\bCHARITY\\b',
     '\\bFLOWERS\\b',
   ]),
+  // Gifting and flower-delivery brands. Their narrations carry none of the
+  // keywords above — "FERNS N PETALS.COM" says nothing about flowers — so
+  // without these they sit in the review queue forever.
+  ...brands('GIFTS_DONATIONS', [
+    '^FERNS N PETALS',
+    '^IGP$',
+    '^INDIAGIFTSPORTAL',
+    '^ARCHIES',
+    '^BAKINGO',
+    '^WINNI$',
+    '^FLOWERAURA',
+  ]),
 
   // --- Business ----------------------------------------------------------
   ...brands('BUSINESS', ['^INDIA POST$', '^GITHUB', '^OFFICEYES', '^BLUE DART', '^DTDC$']),

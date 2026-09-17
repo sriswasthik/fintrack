@@ -269,7 +269,9 @@ describe('§8 case 5 — sync-glitch duplicates vs legitimate repeats', () => {
 describe('§8 case 6 — pending vs posted', () => {
   it('plants pending rows with no posted date', () => {
     const pending = planted('pending');
-    expect(pending).toHaveLength(18);
+    // 18 before Phase 19, plus the four commitments and festive rows that fall
+    // in the first week of September.
+    expect(pending).toHaveLength(22);
     pending.forEach((row) => expect(row.postedDate).toBeNull());
   });
 
