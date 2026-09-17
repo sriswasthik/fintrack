@@ -8,6 +8,7 @@ import { DashboardPage } from '@/pages/DashboardPage';
 import { fetchDashboard, type Dashboard } from '@/lib/dashboard';
 import { fetchAccounts, fetchTransactions } from '@/lib/transactions';
 import { fetchTotals } from '@/lib/totals';
+import { fetchIndiaInsights, type IndiaInsights } from '@/lib/india';
 
 // This component adapts to a read-only demo session; these tests are about a
 // normal one. (The demo behaviour has its own tests.)
@@ -50,11 +51,18 @@ vi.mock('@/lib/totals', async (importOriginal) => ({
   ...(await importOriginal<object>()),
   fetchTotals: vi.fn(),
 }));
+// Phase 19's five statistics-only features. They have their own component and
+// detector suites; here the page only has to place them.
+vi.mock('@/lib/india', async (importOriginal) => ({
+  ...(await importOriginal<object>()),
+  fetchIndiaInsights: vi.fn(),
+}));
 
 const fetchDashboardMock = vi.mocked(fetchDashboard);
 const fetchAccountsMock = vi.mocked(fetchAccounts);
 const fetchTransactionsMock = vi.mocked(fetchTransactions);
 const fetchTotalsMock = vi.mocked(fetchTotals);
+const fetchIndiaMock = vi.mocked(fetchIndiaInsights);
 
 /** The hand-verified June figures. */
 const JUNE: Dashboard = {
@@ -84,8 +92,77 @@ function renderPage() {
 
 const lastParams = () => fetchDashboardMock.mock.calls[fetchDashboardMock.mock.calls.length - 1][0];
 
+const INDIA: IndiaInsights = {
+  month: '2026-06',
+  salary: {
+    payer: 'INFOSYS LTD',
+    monthlyAmount: 120908.34,
+    payDay: 15,
+    creditsPerMonth: 2,
+    months: [],
+    presentInMonth: true,
+    lastPaidMonth: '2026-06',
+  },
+  savings: { month: '2026-06', income: 120000, expense: 90000, saved: 30000, rate: 0.25 },
+  loans: {
+    loans: [
+      {
+        merchant: 'BAJAJ FINANCE EMI',
+        monthlyAmount: 18450,
+        debitDay: 5,
+        firstSeen: '2026-03-05',
+        lastSeen: '2026-06-05',
+        instalmentsObserved: 4,
+        active: true,
+        nextInstalment: '2026-07-05',
+        estimate: {
+          assumedTenureMonths: 6,
+          remainingMonths: 2,
+          projectedFinalMonth: '2026-08',
+          caveat: 'Estimate only. Assumes this loan began with the first instalment.',
+        },
+      },
+    ],
+    totalMonthly: 18450,
+    shareOfIncome: 0.153,
+  },
+  investments: {
+    plans: [
+      {
+        merchant: 'ZERODHA COIN SIP',
+        monthlyAmount: 5000,
+        debitDay: 7,
+        firstSeen: '2026-03-07',
+        lastSeen: '2026-06-07',
+        contributionsObserved: 4,
+        active: true,
+      },
+    ],
+    totalMonthly: 5000,
+    shareOfIncome: 0.041,
+  },
+  upcoming: {
+    bills: [
+      {
+        merchant: 'JIO FIBER',
+        category: 'UTILITIES',
+        expectedDate: '2026-07-05',
+        expectedAmount: 899,
+        lastCharged: '2026-06-05',
+        cadenceDays: 30,
+        expectedDay: 5,
+        confidence: 'high',
+        observations: 4,
+      },
+    ],
+    totalExpected: 899,
+  },
+  festive: null,
+};
+
 beforeEach(() => {
   vi.clearAllMocks();
+  fetchIndiaMock.mockResolvedValue(INDIA);
   fetchDashboardMock.mockResolvedValue(JUNE);
   fetchTotalsMock.mockResolvedValue({
     range: { kind: 'monthly', startDate: '2026-06-01', endDate: '2026-06-30', month: '2026-06' },
@@ -283,6 +360,40 @@ describe('DashboardPage', () => {
         expect.objectContaining({ accountId: 'acct_1' }),
       ),
     );
+  });
+
+  it('leads with the savings rate and the fixed commitments', async () => {
+    renderPage();
+    await screen.findByText('₹8,959.49');
+
+    expect(await screen.findByText('Savings rate')).toBeInTheDocument();
+    expect(screen.getByText('25%')).toBeInTheDocument();
+    expect(screen.getByText('BAJAJ FINANCE EMI')).toBeInTheDocument();
+    expect(screen.getByText('ZERODHA COIN SIP')).toBeInTheDocument();
+  });
+
+  it('puts the predicted bills in the insights panel', async () => {
+    renderPage();
+    await screen.findByText('₹8,959.49');
+
+    expect(await screen.findByText('Expected next')).toBeInTheDocument();
+    expect(screen.getByText(/expected 2026-07-05/)).toBeInTheDocument();
+  });
+
+  it('asks for the month the dashboard actually resolved', async () => {
+    renderPage();
+    await waitFor(() =>
+      expect(fetchIndiaMock).toHaveBeenCalledWith(expect.objectContaining({ month: '2026-06' })),
+    );
+  });
+
+  it('still renders the dashboard when the India pass fails', async () => {
+    // A separate query on purpose: the page is useful without it.
+    fetchIndiaMock.mockRejectedValue(new Error('nope'));
+    renderPage();
+
+    expect(await screen.findByText('₹8,959.49')).toBeInTheDocument();
+    expect(screen.queryByText('Savings rate')).not.toBeInTheDocument();
   });
 
   it('surfaces a failure to load', async () => {

@@ -3,7 +3,9 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { useAuth } from '@/context/auth-context';
+import { FestiveSpending, UpcomingBills } from '@/components/dashboard/UpcomingAndFestive';
 import { formatINR } from '@/lib/currency';
+import type { IndiaInsights } from '@/lib/india';
 import {
   dismissInsight,
   fetchInsights,
@@ -39,7 +41,6 @@ const SEVERITY: Record<AnomalySeverity, { label: string; rail: string }> = {
   MEDIUM: { label: 'Medium', rail: 'bg-[var(--chart-4)]' },
   LOW: { label: 'Low', rail: 'bg-[var(--chart-axis)]' },
 };
-
 
 function InsightRow({
   insight,
@@ -92,7 +93,18 @@ function InsightRow({
  * expect matters more than any of the charts below it — and disappears into a
  * single quiet line when there is nothing to say, which is most months.
  */
-export function InsightsPanel({ month, accountId }: InsightsParams) {
+export function InsightsPanel({
+  month,
+  accountId,
+  india,
+}: InsightsParams & {
+  /**
+   * Phase 19's predictions and festive note, fetched by the page and passed
+   * down rather than fetched again here: they come from one endpoint that
+   * answers five questions, and this panel only shows two of them.
+   */
+  india?: IndiaInsights;
+}) {
   const queryClient = useQueryClient();
   const { isDemo } = useAuth();
   const params: InsightsParams = {
@@ -128,6 +140,10 @@ export function InsightsPanel({ month, accountId }: InsightsParams) {
   const rows = insights.data?.insights ?? [];
   const dismissed = (insights.data?.detected ?? 0) - rows.length;
 
+  const bills = india?.upcoming.bills ?? [];
+  const festive = india?.festive ?? null;
+  const hasExtras = bills.length > 0 || festive !== null;
+
   return (
     <Card className="min-w-0">
       <CardHeader>
@@ -141,29 +157,36 @@ export function InsightsPanel({ month, accountId }: InsightsParams) {
         </CardDescription>
       </CardHeader>
 
-      {(rows.length > 0 || dismiss.isError || dismissed > 0) && (
-        <CardContent>
+      {(rows.length > 0 || dismiss.isError || dismissed > 0 || hasExtras) && (
+        <CardContent className="flex flex-col gap-4">
           {dismiss.isError && (
             <p role="alert" className="text-destructive mb-2 text-sm">
               That insight could not be dismissed. It is back in the list.
             </p>
           )}
 
-          <ul className="divide-y">
-            {rows.map((insight) => (
-              <InsightRow
-                key={insight.id}
-                insight={insight}
-                onDismiss={isDemo ? undefined : () => dismiss.mutate(insight.id)}
-              />
-            ))}
-          </ul>
+          {rows.length > 0 && (
+            <ul className="divide-y">
+              {rows.map((insight) => (
+                <InsightRow
+                  key={insight.id}
+                  insight={insight}
+                  onDismiss={isDemo ? undefined : () => dismiss.mutate(insight.id)}
+                />
+              ))}
+            </ul>
+          )}
 
           {dismissed > 0 && (
-            <p className="text-muted-foreground mt-3 text-xs">
+            <p className="text-muted-foreground text-xs">
               {dismissed} dismissed {dismissed === 1 ? 'insight' : 'insights'} hidden.
             </p>
           )}
+
+          {/* Below the anomalies on purpose: a charge you did not expect is
+              something to act on today, and these two are context. */}
+          <UpcomingBills bills={bills} totalExpected={india?.upcoming.totalExpected ?? 0} />
+          {festive && <FestiveSpending note={festive} />}
         </CardContent>
       )}
     </Card>

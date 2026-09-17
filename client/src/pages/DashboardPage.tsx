@@ -4,7 +4,9 @@ import { Link } from 'react-router-dom';
 
 import { CategoryDonut } from '@/components/dashboard/CategoryDonut';
 import { CategoryDrilldown } from '@/components/dashboard/CategoryDrilldown';
+import { CommitmentsPanel } from '@/components/dashboard/CommitmentsPanel';
 import { InsightsPanel } from '@/components/dashboard/InsightsPanel';
+import { SavingsRate } from '@/components/dashboard/SavingsRate';
 import { RangeTotals } from '@/components/RangeTotals';
 import { EmptyState, ErrorState, Loading } from '@/components/states';
 import { SpendOverTime } from '@/components/dashboard/SpendOverTime';
@@ -28,9 +30,9 @@ import {
 } from '@/components/ui/table';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { fetchDashboard, type Granularity } from '@/lib/dashboard';
+import { fetchIndiaInsights } from '@/lib/india';
 import { CATEGORIES, fetchAccounts, type Category } from '@/lib/transactions';
 import { formatINR, formatINRCompact } from '@/lib/currency';
-
 
 function monthLabel(month: string): string {
   const [year, index] = month.split('-').map(Number);
@@ -67,6 +69,21 @@ export function DashboardPage() {
   const months = data?.availableMonths ?? [];
   const currentMonth = data?.range.month ?? month ?? null;
   const monthIndex = currentMonth ? months.indexOf(currentMonth) : -1;
+
+  // Phase 19's five statistics-only features, on their own query so a slow or
+  // failed India pass never holds up the dashboard itself — the page is useful
+  // without it, and every part of it renders only once its data arrives. Keyed
+  // off the month the dashboard actually resolved, so the two never disagree
+  // about which month is on screen.
+  const indiaParams = {
+    ...(currentMonth ? { month: currentMonth } : {}),
+    ...(accountId === 'all' ? {} : { accountId }),
+  };
+  const india = useQuery({
+    queryKey: ['india', indiaParams],
+    queryFn: () => fetchIndiaInsights(indiaParams),
+    enabled: currentMonth !== null,
+  });
 
   const step = (by: number) => {
     const next = months[monthIndex + by];
@@ -213,11 +230,24 @@ export function DashboardPage() {
             />
           </section>
 
+          {/* The one figure on this page that answers "how am I doing" rather
+              than "what happened", so it gets a row of its own rather than a
+              fifth slot in the grid above. */}
+          {india.data && (
+            <section className="grid gap-3 sm:gap-4 lg:grid-cols-3">
+              <SavingsRate savings={india.data.savings} />
+              <div className="lg:col-span-2">
+                <CommitmentsPanel insights={india.data} />
+              </div>
+            </section>
+          )}
+
           {/* Above the charts: an unexpected charge is the one thing on this page a
           person might need to act on today. */}
           <InsightsPanel
             month={currentMonth ?? undefined}
             accountId={accountId === 'all' ? undefined : accountId}
+            india={india.data}
           />
 
           {/* Its own range, deliberately: the tiles above answer "this month",
