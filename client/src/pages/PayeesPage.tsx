@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 
+import { Amount } from '@/components/Amount';
 import { PayeeDetail } from '@/components/PayeeDetail';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -23,7 +24,6 @@ import {
 } from '@/components/ui/table';
 import { EmptyState, ErrorState, Loading } from '@/components/states';
 import { fetchPayees, PAYEE_SORTS, type Payee, type PayeeSort } from '@/lib/payees';
-import { formatINR } from '@/lib/currency';
 
 type Filter = 'all' | 'PERSON' | 'BUSINESS';
 
@@ -78,8 +78,8 @@ export function PayeesPage() {
         <CardHeader>
           <CardTitle>People &amp; Businesses</CardTitle>
           <CardDescription>
-            Everyone you have paid or been paid by, with the running total for each. The same
-            person appearing again on a different day joins the row they are already on.
+            Everyone you have paid or been paid by, with the running total for each. The same person
+            appearing again on a different day joins the row they are already on.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -144,8 +144,8 @@ export function PayeesPage() {
             <>
               <p className="text-muted-foreground text-sm">
                 {payees.length} {payees.length === 1 ? 'payee' : 'payees'} · paid{' '}
-                <span className="tabular-nums">{formatINR(totals.paid)}</span> · received{' '}
-                <span className="tabular-nums">{formatINR(totals.received)}</span>
+                <Amount value={totals.paid} direction="debit" /> · received{' '}
+                <Amount value={totals.received} direction="credit" />
               </p>
 
               <Table>
@@ -174,14 +174,16 @@ export function PayeesPage() {
                           <p className="text-muted-foreground text-xs">{payee.upiVpa}</p>
                         )}
                       </TableCell>
-                      <TableCell className="text-right tabular-nums">
-                        {formatINR(payee.paid)}
+                      <TableCell className="text-right">
+                        <Amount value={payee.paid} direction="debit" />
                       </TableCell>
-                      <TableCell className="text-right tabular-nums">
-                        {formatINR(payee.received)}
+                      <TableCell className="text-right">
+                        <Amount value={payee.received} direction="credit" />
                       </TableCell>
-                      <TableCell className="text-right tabular-nums">
-                        {formatINR(payee.net)}
+                      {/* Net carries its own sign — debit-positive, so being out
+                      of pocket is the red one. */}
+                      <TableCell className="text-right">
+                        <Amount value={payee.net} />
                       </TableCell>
                       <TableCell className="text-right tabular-nums">
                         {payee.transactions}

@@ -16,9 +16,9 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
+import { Amount } from '@/components/Amount';
 import { fetchTransactions, type Category } from '@/lib/transactions';
 import { formatINR } from '@/lib/currency';
-
 
 /**
  * The transactions behind one number on the dashboard.
@@ -87,8 +87,8 @@ export function CategoryDrilldown({
                       {transaction.description}
                     </div>
                   </TableCell>
-                  <TableCell className="text-right tabular-nums">
-                    {formatINR(transaction.amount)}
+                  <TableCell className="text-right">
+                    <Amount value={transaction.amount} />
                   </TableCell>
                 </TableRow>
               ))}
