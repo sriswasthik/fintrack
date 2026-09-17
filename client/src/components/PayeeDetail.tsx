@@ -16,16 +16,28 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
+import { Amount } from '@/components/Amount';
 import { ErrorState, Loading } from '@/components/states';
+import type { AmountDirection } from '@/lib/amount';
 import { fetchPayee, type Payee } from '@/lib/payees';
-import { formatINR } from '@/lib/currency';
 
 /** One figure from the ledger, with the word for what it means underneath. */
-function Total({ label, value, hint }: { label: string; value: number; hint?: string }) {
+function Total({
+  label,
+  value,
+  direction,
+  hint,
+}: {
+  label: string;
+  value: number;
+  /** Paid and received are stored as magnitudes, so they have to say which way. */
+  direction?: AmountDirection;
+  hint?: string;
+}) {
   return (
     <div className="rounded-lg border p-3">
       <p className="text-muted-foreground text-xs">{label}</p>
-      <p className="text-lg font-semibold tabular-nums">{formatINR(value)}</p>
+      <Amount value={value} direction={direction} className="text-lg font-semibold" />
       {hint && <p className="text-muted-foreground text-xs">{hint}</p>}
     </div>
   );
@@ -72,9 +84,7 @@ export function PayeeDetail({
               payee?.upiVpa,
               payee?.phone && !payee.upiVpa?.startsWith(payee.phone) ? payee.phone : null,
               detail ? `${detail.transactions} transaction(s)` : null,
-              detail?.firstTransactionAt
-                ? `since ${detail.firstTransactionAt}`
-                : null,
+              detail?.firstTransactionAt ? `since ${detail.firstTransactionAt}` : null,
             ]
               .filter(Boolean)
               .join(' · ') || 'No transactions yet'}
@@ -87,8 +97,8 @@ export function PayeeDetail({
         {detail && (
           <>
             <div className="grid grid-cols-3 gap-3">
-              <Total label="Paid to them" value={detail.paid} />
-              <Total label="Received from them" value={detail.received} />
+              <Total label="Paid to them" value={detail.paid} direction="debit" />
+              <Total label="Received from them" value={detail.received} direction="credit" />
               <Total
                 label="Net"
                 value={detail.net}
@@ -131,8 +141,8 @@ export function PayeeDetail({
                         {transaction.category.replace(/_/g, ' ')}
                       </TableCell>
                       <TableCell className="whitespace-nowrap">{transaction.accountName}</TableCell>
-                      <TableCell className="text-right tabular-nums">
-                        {formatINR(transaction.amount)}
+                      <TableCell className="text-right">
+                        <Amount value={transaction.amount} />
                       </TableCell>
                     </TableRow>
                   ))}

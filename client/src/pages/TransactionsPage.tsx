@@ -20,13 +20,12 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
+import { Amount } from '@/components/Amount';
 import { SplitDialog } from '@/components/SplitDialog';
 import { EmptyState, ErrorState, Loading } from '@/components/states';
 import { fetchAccounts, fetchTransactions, type Transaction } from '@/lib/transactions';
-import { formatINR } from '@/lib/currency';
 
 const PAGE_SIZE = 50;
-
 
 export function TransactionsPage() {
   const queryClient = useQueryClient();
@@ -125,8 +124,8 @@ export function TransactionsPage() {
                       {transaction.linkedRefundId && <Badge variant="outline">refunded</Badge>}
                     </div>
                   </TableCell>
-                  <TableCell className="text-right tabular-nums">
-                    {formatINR(transaction.amount)}
+                  <TableCell className="text-right">
+                    <Amount value={transaction.amount} />
                   </TableCell>
                   <TableCell>
                     <Button size="sm" variant="ghost" onClick={() => setSelected(transaction)}>

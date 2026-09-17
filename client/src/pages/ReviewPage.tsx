@@ -4,7 +4,6 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { formatINR } from '@/lib/currency';
 import {
   Select,
   SelectContent,
@@ -20,6 +19,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
+import { Amount } from '@/components/Amount';
 import {
   CATEGORIES,
   fetchReviewQueue,
@@ -27,7 +27,6 @@ import {
   type Category,
   type Transaction,
 } from '@/lib/transactions';
-
 
 function errorMessage(error: unknown): string {
   if (typeof error === 'object' && error !== null && 'response' in error) {
@@ -172,7 +171,9 @@ function ReviewRow({
           {transaction.description}
         </div>
       </TableCell>
-      <TableCell className="text-right tabular-nums">{formatINR(transaction.amount)}</TableCell>
+      <TableCell className="text-right">
+        <Amount value={transaction.amount} />
+      </TableCell>
       <TableCell>
         {suggestion ? (
           <div className="flex flex-col gap-1">
