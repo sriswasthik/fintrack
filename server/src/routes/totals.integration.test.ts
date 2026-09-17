@@ -51,24 +51,30 @@ const DAY = {
   transactionCount: 8,
 };
 
-/** June 2026, a complete calendar month in the middle of the window. */
+/**
+ * June 2026, a complete calendar month in the middle of the window.
+ *
+ * The debit side grew in Phase 19, which added a ₹18,450 instalment and two
+ * SIPs to every month of the fixture (and, in June, the second of the two
+ * gold-loan decoy payments).
+ */
 const MONTH = {
   month: '2026-06',
-  totalDebits: 173967.09,
+  totalDebits: 218217.09,
   totalCredits: 234010.1,
-  // Negative: salary landing makes June a month where more arrived than left.
-  net: -60043.01,
-  transactionCount: 111,
+  // Still negative: salary landing makes June a month where more arrived.
+  net: -15793.01,
+  transactionCount: 115,
 };
 
 /** Q2 2026, as the client's "This Quarter" chip would ask for it. */
 const CUSTOM = {
   startDate: '2026-04-01',
   endDate: '2026-06-30',
-  totalDebits: 638935.65,
+  totalDebits: 735085.65,
   totalCredits: 645525.51,
-  net: -6589.86,
-  transactionCount: 369,
+  net: 89560.14,
+  transactionCount: 379,
 };
 
 /**
