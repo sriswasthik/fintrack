@@ -148,6 +148,20 @@ describe('sendInBackground', () => {
     expect(error.mock.calls[0][0]).toContain('API key is invalid');
   });
 
+  it('warns rather than errors when no mail is configured at all', async () => {
+    // Not a failure: it is what a local checkout and CI look like. Logging it
+    // at error on every signup is how a team learns to ignore the channel.
+    delete process.env.RESEND_API_KEY;
+    const error = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+
+    sendInBackground(MESSAGE, 'welcome');
+    await vi.waitFor(() => expect(warn).toHaveBeenCalled());
+
+    expect(warn.mock.calls[0][0]).toContain('skipping send');
+    expect(error).not.toHaveBeenCalled();
+  });
+
   it('says nothing on success', async () => {
     // The repo logs at warn and error only, and a courtesy email arriving is
     // not news.

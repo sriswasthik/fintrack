@@ -41,6 +41,13 @@ export interface EmailMessage {
 export interface SendResult {
   /** False when the deployment cannot send mail, or the provider refused. */
   sent: boolean;
+  /**
+   * True when there was nothing to try: no credentials are configured.
+   *
+   * Worth separating from a failure, because it is the ordinary state of a
+   * local checkout and of CI, and the two deserve different log levels.
+   */
+  skipped?: boolean;
   /** Provider id for a successful send, for tracing a delivery later. */
   id?: string;
   /** Why it did not send. Logged, never returned to a caller's caller. */
@@ -72,6 +79,7 @@ export async function sendEmail(message: EmailMessage): Promise<SendResult> {
   if (!emailConfigured()) {
     return {
       sent: false,
+      skipped: true,
       reason: 'RESEND_API_KEY and EMAIL_FROM are not set; skipping send',
     };
   }
@@ -113,13 +121,17 @@ export async function sendEmail(message: EmailMessage): Promise<SendResult> {
 export function sendInBackground(message: EmailMessage, context: string): void {
   void sendEmail(message)
     .then((result) => {
-      // Silent on success, loud on failure — the repo logs at warn and error
-      // only, and a courtesy email arriving is not news. A failure is: it is
-      // invisible from the user's side, so the server log is the only place
-      // anyone will ever find out.
-      if (!result.sent) {
-        console.error(`[email] ${context} not sent to ${message.to}: ${result.reason}`);
-      }
+      // Silent on success — a courtesy email arriving is not news. A failure
+      // is: it is invisible from the user's side, so the server log is the
+      // only place anyone will ever find out.
+      //
+      // A deployment with no mail credentials is not one of those failures,
+      // though. It is what a local checkout and CI look like, and logging it
+      // at error on every single signup is how a team learns to ignore the
+      // error channel.
+      if (result.sent) return;
+      const log = result.skipped ? console.warn : console.error;
+      log(`[email] ${context} not sent to ${message.to}: ${result.reason}`);
     })
     .catch((error: unknown) => {
       console.error(`[email] ${context} threw for ${message.to}:`, error);

@@ -310,16 +310,18 @@ describe.skipIf(!hasDatabase)('when sending fails', () => {
 
   it('still registers on a deployment that cannot send mail at all', async () => {
     // The ordinary local case: no key configured. Not an error, and not a
-    // reason to refuse a registration.
+    // reason to refuse a registration — so it warns rather than errors.
     delete process.env.RESEND_API_KEY;
     delete process.env.EMAIL_FROM;
     const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const warnings = vi.spyOn(console, 'warn').mockImplementation(() => {});
 
     await registerNew().expect(201);
     await quiet();
 
     expect(sent).toEqual([]);
     expect(await prisma.user.count({ where: { email: 'welcome-new@fintrack.test' } })).toBe(1);
-    expect(errors).toHaveBeenCalledWith(expect.stringContaining('skipping send'));
+    expect(warnings).toHaveBeenCalledWith(expect.stringContaining('skipping send'));
+    expect(errors).not.toHaveBeenCalled();
   });
 });
