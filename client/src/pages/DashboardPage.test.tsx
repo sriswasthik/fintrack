@@ -7,6 +7,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { DashboardPage } from '@/pages/DashboardPage';
 import { fetchDashboard, type Dashboard } from '@/lib/dashboard';
 import { fetchAccounts, fetchTransactions } from '@/lib/transactions';
+import { fetchTotals } from '@/lib/totals';
 
 // This component adapts to a read-only demo session; these tests are about a
 // normal one. (The demo behaviour has its own tests.)
@@ -22,7 +23,6 @@ vi.mock('@/context/auth-context', () => ({
     signOut: vi.fn(),
   }),
 }));
-
 
 // Recharts measures its container, which jsdom cannot do, so the two chart
 // components are stubbed. Their own logic is covered by slices.test.ts.
@@ -44,10 +44,17 @@ vi.mock('@/lib/transactions', async (importOriginal) => ({
   fetchAccounts: vi.fn(),
   fetchTransactions: vi.fn(),
 }));
+// The range-totals widget runs its own query on its own window (Phase 18). It
+// has its own tests; here it only needs to not reach the network.
+vi.mock('@/lib/totals', async (importOriginal) => ({
+  ...(await importOriginal<object>()),
+  fetchTotals: vi.fn(),
+}));
 
 const fetchDashboardMock = vi.mocked(fetchDashboard);
 const fetchAccountsMock = vi.mocked(fetchAccounts);
 const fetchTransactionsMock = vi.mocked(fetchTransactions);
+const fetchTotalsMock = vi.mocked(fetchTotals);
 
 /** The hand-verified June figures. */
 const JUNE: Dashboard = {
@@ -80,6 +87,14 @@ const lastParams = () => fetchDashboardMock.mock.calls[fetchDashboardMock.mock.c
 beforeEach(() => {
   vi.clearAllMocks();
   fetchDashboardMock.mockResolvedValue(JUNE);
+  fetchTotalsMock.mockResolvedValue({
+    range: { kind: 'monthly', startDate: '2026-06-01', endDate: '2026-06-30', month: '2026-06' },
+    filters: { accountId: null },
+    totalDebits: 173967.09,
+    totalCredits: 234010.1,
+    net: -60043.01,
+    transactionCount: 111,
+  });
   fetchAccountsMock.mockResolvedValue([
     { id: 'acct_1', name: 'Everyday Checking', type: 'CHECKING' },
     { id: 'acct_2', name: 'Sapphire Credit Card', type: 'CREDIT_CARD' },
@@ -243,6 +258,29 @@ describe('DashboardPage', () => {
     await waitFor(() =>
       expect(fetchTransactionsMock).toHaveBeenCalledWith(
         expect.objectContaining({ category: 'SHOPPING' }),
+      ),
+    );
+  });
+
+  it('carries the range-totals widget, on its own window and the page filter', async () => {
+    const user = userEvent.setup();
+    renderPage();
+    await screen.findByText('₹8,959.49');
+
+    // Its own question, not a second copy of the tiles above: debits and
+    // credits over a window the reader picks.
+    expect(screen.getByText('Debits and credits')).toBeInTheDocument();
+    expect(await screen.findByText('\u2212₹1,73,967.09')).toHaveClass('text-destructive');
+    expect(screen.getByText('+₹2,34,010.10')).toHaveClass('text-chart-positive');
+
+    // Narrowing the page to one account narrows the widget with it: that is a
+    // filter on whose money, not on which window.
+    await user.click(screen.getByRole('combobox', { name: /account/i }));
+    await user.click(await screen.findByRole('option', { name: 'Everyday Checking' }));
+
+    await waitFor(() =>
+      expect(fetchTotalsMock).toHaveBeenCalledWith(
+        expect.objectContaining({ accountId: 'acct_1' }),
       ),
     );
   });

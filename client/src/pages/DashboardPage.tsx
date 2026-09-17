@@ -5,6 +5,7 @@ import { Link } from 'react-router-dom';
 import { CategoryDonut } from '@/components/dashboard/CategoryDonut';
 import { CategoryDrilldown } from '@/components/dashboard/CategoryDrilldown';
 import { InsightsPanel } from '@/components/dashboard/InsightsPanel';
+import { RangeTotals } from '@/components/RangeTotals';
 import { EmptyState, ErrorState, Loading } from '@/components/states';
 import { SpendOverTime } from '@/components/dashboard/SpendOverTime';
 import { StatTile } from '@/components/dashboard/StatTile';
@@ -217,6 +218,15 @@ export function DashboardPage() {
           <InsightsPanel
             month={currentMonth ?? undefined}
             accountId={accountId === 'all' ? undefined : accountId}
+          />
+
+          {/* Its own range, deliberately: the tiles above answer "this month",
+          and the question this one exists for is "what about today / the
+          quarter / those three weeks in June". It follows the account filter
+          because that is a filter on whose money, not on which window. */}
+          <RangeTotals
+            accountId={accountId === 'all' ? undefined : accountId}
+            title="Debits and credits"
           />
 
           <section className="grid gap-4 lg:grid-cols-5">
