@@ -71,6 +71,16 @@ export const authLimiter = limiter(
 );
 
 /**
+ * Asking for a password reset link. Every request counts, because every
+ * request answers 202 and may send an email: counting only failures would
+ * count nothing, and leave a way to fill somebody's inbox.
+ */
+export const passwordResetLimiter = limiter(
+  5,
+  'Too many reset requests. Wait a few minutes and try again.',
+);
+
+/**
  * The refresh route, which every page load hits before anything else.
  *
  * A refresh carrying no cookie is not an attempt at anything — it is what a

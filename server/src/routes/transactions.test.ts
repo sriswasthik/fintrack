@@ -28,6 +28,8 @@ const db = vi.hoisted(() => ({
   payeeFindMany: vi.fn(),
   payeeCreate: vi.fn(),
   payeeUpdate: vi.fn(),
+  // Every commit records its rows as one import (Phase 20).
+  importBatchCreate: vi.fn(),
 }));
 
 const prismaMock = vi.hoisted(() => ({}) as Record<string, unknown>);
@@ -97,6 +99,7 @@ beforeEach(() => {
     Promise.resolve({ id: 'payee_new', ...data }),
   );
   db.payeeUpdate.mockResolvedValue({});
+  db.importBatchCreate.mockResolvedValue({ id: 'import_1' });
 
   Object.assign(prismaMock, {
     account: { findUnique: db.accountFindUnique, findFirst: db.accountFindFirst },
@@ -122,6 +125,7 @@ beforeEach(() => {
       create: db.payeeCreate,
       update: db.payeeUpdate,
     },
+    importBatch: { create: db.importBatchCreate },
     merchantCategoryCache: { upsert: db.cacheUpsert },
     categoryOverride: { create: db.overrideCreate },
     split: { deleteMany: db.splitDeleteMany, createMany: db.splitCreateMany },
@@ -368,12 +372,18 @@ describe('POST /api/transactions/commit', () => {
       .send({ accountId: ACCOUNT_ID, rows, resolutions: {} })
       .expect(201);
 
-    expect(response.body).toMatchObject({ accountId: ACCOUNT_ID, imported: 2, skipped: 0 });
+    expect(response.body).toMatchObject({
+      accountId: ACCOUNT_ID,
+      importId: 'import_1',
+      imported: 2,
+      skipped: 0,
+    });
 
     const inserted = db.transactionCreateMany.mock.calls[0][0].data;
     expect(inserted).toHaveLength(2);
     expect(inserted[0]).toMatchObject({
       accountId: ACCOUNT_ID,
+      importBatchId: 'import_1',
       description: 'PAYTM*CHAI POINT',
       normalizedMerchant: 'CHAI POINT',
       amount: '5.25',
@@ -415,6 +425,34 @@ describe('POST /api/transactions/commit', () => {
 
     expect(response.body.imported).toBe(0);
     expect(db.transactionCreateMany).not.toHaveBeenCalled();
+    // Nothing went in, so there is nothing to undo and no import to list.
+    expect(db.importBatchCreate).not.toHaveBeenCalled();
+    expect(response.body.importId).toBeNull();
+  });
+
+  it('records the import with its files and the rows it actually inserted', async () => {
+    await request(app)
+      .post('/api/transactions/commit')
+      .set(authHeader())
+      .send({
+        accountId: ACCOUNT_ID,
+        rows,
+        resolutions: { '2': 'skip' },
+        fileNames: ['statement_hdfc.pdf'],
+      })
+      .expect(201);
+
+    expect(db.importBatchCreate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: {
+          userId: 'user_1',
+          accountId: ACCOUNT_ID,
+          fileNames: ['statement_hdfc.pdf'],
+          // One of the two was skipped.
+          rowCount: 1,
+        },
+      }),
+    );
   });
 
   it('rejects an empty row set', async () => {

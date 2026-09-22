@@ -4,6 +4,7 @@ import {
   categorizeTransactions,
   clearSplit,
   commitTransactions,
+  exportTransactions,
   getReviewQueue,
   getTransaction,
   listTransactions,
@@ -39,6 +40,8 @@ transactionsRouter.post(
 transactionsRouter.get('/review-queue', asyncHandler(getReviewQueue));
 
 transactionsRouter.get('/transactions', asyncHandler(listTransactions));
+/** As a CSV download. Registered before `/:id`, which would otherwise claim "export". */
+transactionsRouter.get('/transactions/export', asyncHandler(exportTransactions));
 transactionsRouter.get('/transactions/:id', asyncHandler(getTransaction));
 
 /** Divide one charge across categories (§8 case 3). */

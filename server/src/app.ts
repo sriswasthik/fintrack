@@ -7,11 +7,15 @@ import { authConfigurationHandler, requireAuth, requireWritableSession } from '.
 import { errorHandler, notFoundHandler } from './middleware/errorHandler';
 import { accountsRouter } from './routes/accounts';
 import { authRouter } from './routes/auth';
+import { budgetsRouter } from './routes/budgets';
 import { dashboardRouter } from './routes/dashboard';
 import { healthRouter } from './routes/health';
+import { importsRouter } from './routes/imports';
 import { indiaRouter } from './routes/india';
 import { insightsRouter } from './routes/insights';
+import { meRouter } from './routes/me';
 import { payeesRouter } from './routes/payees';
+import { rulesRouter } from './routes/rules';
 import { statementsRouter } from './routes/statements';
 import { summaryRouter } from './routes/summary';
 import { totalsRouter } from './routes/totals';
@@ -80,10 +84,14 @@ export function createApp() {
   const session = [requireAuth, requireWritableSession];
 
   app.use('/api', session, accountsRouter);
+  app.use('/api', session, budgetsRouter);
   app.use('/api', session, dashboardRouter);
+  app.use('/api', session, importsRouter);
   app.use('/api', session, indiaRouter);
   app.use('/api', session, insightsRouter);
+  app.use('/api', session, meRouter);
   app.use('/api', session, payeesRouter);
+  app.use('/api', session, rulesRouter);
   app.use('/api', session, statementsRouter);
   app.use('/api', session, summaryRouter);
   app.use('/api', session, totalsRouter);

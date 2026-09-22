@@ -7,6 +7,7 @@
  * keep/skip decisions and does the insert.
  */
 import type { RequestHandler } from 'express';
+import Papa from 'papaparse';
 import { z } from 'zod';
 
 import { getPrisma } from '../db';
@@ -79,6 +80,11 @@ const commitBodySchema = z.object({
   rows: z.array(previewRowSchema).min(1, 'No rows to import').max(20000),
   /** Row index -> what to do with it. Rows without an entry are kept. */
   resolutions: z.record(z.string(), z.enum(['keep', 'skip'])).default({}),
+  /**
+   * The files the rows came from, recorded on the import so the history can
+   * name it (Phase 20). Optional: a script committing rows has no file.
+   */
+  fileNames: z.array(z.string().trim().min(1).max(255)).max(50).default([]),
 });
 
 /**
@@ -192,32 +198,45 @@ export const uploadTransactions: RequestHandler = async (req, res) => {
  *
  * Inserts the reviewed rows. Categorization is Phase 3/4's job, so everything
  * lands as UNCATEGORIZED with zero confidence.
+ *
+ * The rows are tagged with an `ImportBatch` written in the same transaction,
+ * which is what lets the whole import be undone later as one unit
+ * (`DELETE /api/imports/:id`).
  */
 export const commitTransactions: RequestHandler = async (req, res) => {
   const userId = currentUserId(req);
-  const { accountId, rows, resolutions } = commitBodySchema.parse(req.body);
+  const { accountId, rows, resolutions, fileNames } = commitBodySchema.parse(req.body);
   await requireAccount(userId, accountId);
 
   const skipped = rows.filter((row) => resolutions[String(row.index)] === 'skip');
   const toImport = rows.filter((row) => resolutions[String(row.index)] !== 'skip');
 
+  let importId: string | null = null;
   if (toImport.length > 0) {
-    await getPrisma().transaction.createMany({
-      data: toImport.map((row) => ({
-        accountId,
-        date: new Date(`${row.date}T00:00:00.000Z`),
-        postedDate: row.postedDate ? new Date(`${row.postedDate}T00:00:00.000Z`) : null,
-        description: row.description,
-        rawMerchant: row.rawMerchant,
-        normalizedMerchant: row.normalizedMerchant,
-        counterpartyRaw: row.counterpartyRaw,
-        upiVpa: row.upiVpa,
-        amount: row.amount.toFixed(2),
-        currency: 'INR',
-        category: 'UNCATEGORIZED' as const,
-        confidence: 0,
-        source: 'RULE' as const,
-      })),
+    importId = await getPrisma().$transaction(async (tx) => {
+      const batch = await tx.importBatch.create({
+        data: { userId, accountId, fileNames, rowCount: toImport.length },
+        select: { id: true },
+      });
+      await tx.transaction.createMany({
+        data: toImport.map((row) => ({
+          accountId,
+          importBatchId: batch.id,
+          date: new Date(`${row.date}T00:00:00.000Z`),
+          postedDate: row.postedDate ? new Date(`${row.postedDate}T00:00:00.000Z`) : null,
+          description: row.description,
+          rawMerchant: row.rawMerchant,
+          normalizedMerchant: row.normalizedMerchant,
+          counterpartyRaw: row.counterpartyRaw,
+          upiVpa: row.upiVpa,
+          amount: row.amount.toFixed(2),
+          currency: 'INR',
+          category: 'UNCATEGORIZED' as const,
+          confidence: 0,
+          source: 'RULE' as const,
+        })),
+      });
+      return batch.id;
     });
   }
 
@@ -234,6 +253,7 @@ export const commitTransactions: RequestHandler = async (req, res) => {
 
   res.status(201).json({
     accountId,
+    importId,
     imported: toImport.length,
     skipped: skipped.length,
     categorization,
@@ -351,6 +371,123 @@ export const listTransactions: RequestHandler = async (req, res) => {
   ]);
 
   res.json({ total, limit, offset, transactions: rows.map(serializeTransaction) });
+};
+
+const exportQuerySchema = z
+  .object({
+    accountId: z.string().min(1).optional(),
+    category: z.enum(CATEGORIES).optional(),
+    month: z
+      .string()
+      .regex(/^\d{4}-(0[1-9]|1[0-2])$/, 'month must be YYYY-MM')
+      .optional(),
+    /** Inclusive, YYYY-MM-DD. */
+    from: z
+      .string()
+      .regex(/^\d{4}-\d{2}-\d{2}$/, 'from must be YYYY-MM-DD')
+      .optional(),
+    /** Inclusive, YYYY-MM-DD. */
+    to: z
+      .string()
+      .regex(/^\d{4}-\d{2}-\d{2}$/, 'to must be YYYY-MM-DD')
+      .optional(),
+  })
+  .refine((q) => !(q.month && (q.from || q.to)), {
+    message: 'Give either month or from/to, not both',
+  })
+  .refine((q) => !q.from || !q.to || q.from <= q.to, { message: 'from must not be after to' });
+
+/**
+ * Neutralises a text cell a spreadsheet would otherwise run as a formula.
+ *
+ * A bank narration is text somebody else wrote. One that begins `=`, `+`, `-`
+ * or `@` is a formula to Excel and Sheets the moment the file is opened —
+ * `=HYPERLINK(...)` in a merchant name is the classic CSV injection. A leading
+ * apostrophe is how a spreadsheet is told "this is text", and it is invisible
+ * in the cell.
+ */
+export function csvSafe(value: string): string {
+  return /^[=+\-@\t\r]/.test(value) ? `'${value}` : value;
+}
+
+/**
+ * GET /api/transactions/export
+ *
+ * The caller's transactions as a CSV a spreadsheet opens directly, with the
+ * same filters as the list plus an inclusive date range. Debits and credits
+ * are separate unsigned columns rather than one signed amount: the stored
+ * debit-positive convention is the opposite of what most people expect a
+ * minus sign in a bank export to mean, and two columns cannot be misread.
+ */
+export const exportTransactions: RequestHandler = async (req, res) => {
+  const { accountId, category, month, from, to } = exportQuerySchema.parse(req.query);
+  const userId = await scopeToUser(getPrisma(), req, accountId);
+
+  const monthRange = month ? monthWindow(month) : null;
+  const date = monthRange
+    ? { gte: monthRange.from, lt: monthRange.to }
+    : from || to
+      ? {
+          ...(from ? { gte: new Date(`${from}T00:00:00.000Z`) } : {}),
+          // Inclusive end: everything before the start of the following day.
+          ...(to ? { lt: new Date(Date.parse(`${to}T00:00:00.000Z`) + 86_400_000) } : {}),
+        }
+      : undefined;
+
+  const rows = await getPrisma().transaction.findMany({
+    where: {
+      account: { userId },
+      ...(accountId ? { accountId } : {}),
+      ...(category ? { category } : {}),
+      ...(date ? { date } : {}),
+    },
+    orderBy: [{ date: 'asc' }, { id: 'asc' }],
+    include: { splits: true, account: { select: { name: true } } },
+  });
+
+  const money = (value: number) => (value === 0 ? '' : Math.abs(value).toFixed(2));
+
+  const csv = Papa.unparse(
+    {
+      fields: [
+        'Date',
+        'Posted Date',
+        'Account',
+        'Description',
+        'Merchant',
+        'Category',
+        'Debit',
+        'Credit',
+        'Currency',
+        'Categorized By',
+        'Splits',
+      ],
+      data: rows.map((t) => {
+        const amount = Number(t.amount);
+        return [
+          t.date.toISOString().slice(0, 10),
+          t.postedDate ? t.postedDate.toISOString().slice(0, 10) : '',
+          csvSafe(t.account.name),
+          csvSafe(t.description),
+          csvSafe(t.normalizedMerchant),
+          t.category,
+          amount > 0 ? money(amount) : '',
+          amount < 0 ? money(amount) : '',
+          t.currency,
+          t.source,
+          t.splits.map((s) => `${s.category} ${Number(s.amount).toFixed(2)}`).join('; '),
+        ];
+      }),
+    },
+    { newline: '\r\n' },
+  );
+
+  const label = month ?? (from || to ? `${from ?? 'start'}_to_${to ?? 'end'}` : 'all');
+  res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+  res.setHeader('Content-Disposition', `attachment; filename="fintrack-transactions-${label}.csv"`);
+  // A byte-order mark, so Excel reads the file as UTF-8 rather than a code
+  // page — narrations carry accented merchant names and the occasional ₹.
+  res.send(String.fromCharCode(0xfeff) + csv);
 };
 
 /** GET /api/transactions/:id */
