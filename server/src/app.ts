@@ -18,11 +18,39 @@ import { totalsRouter } from './routes/totals';
 import { transactionsRouter } from './routes/transactions';
 
 /**
+ * How many proxies in front of this server to believe about the client's
+ * address, as Express's `trust proxy` setting.
+ *
+ * It matters because the rate limiters key a signed-out request by `req.ip`.
+ * Render and Railway both put one load balancer in front of the app, so with
+ * the setting off every request appears to come from that balancer, and the
+ * sign-in budget of one address becomes the budget of everybody at once. Set
+ * too high, the opposite goes wrong: a caller could write any address it liked
+ * into `X-Forwarded-For` and reset its own budget.
+ *
+ * `TRUST_PROXY` takes a hop count, `true`/`false`, or anything else Express
+ * accepts (`loopback`, a list of subnets). Unset, it is one hop in production —
+ * what both documented platforms need — and off everywhere else.
+ */
+export function trustProxySetting(env: NodeJS.ProcessEnv = process.env): boolean | number | string {
+  const raw = env.TRUST_PROXY?.trim();
+  if (!raw) return env.NODE_ENV === 'production' ? 1 : false;
+
+  const lower = raw.toLowerCase();
+  if (lower === 'false' || lower === 'off') return false;
+  if (lower === 'true' || lower === 'on') return true;
+  if (/^\d+$/.test(raw)) return Number(raw);
+  return raw;
+}
+
+/**
  * Builds the Express application. Kept separate from `index.ts` so tests can
  * mount it with Supertest without opening a port.
  */
 export function createApp() {
   const app = express();
+
+  app.set('trust proxy', trustProxySetting());
 
   app.use(helmet());
   app.use(
