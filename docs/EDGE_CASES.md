@@ -191,7 +191,7 @@ quietly redefine "normal" for its category and mask what comes after it.
 | `server/src/services/edge-cases.test.ts`           | still finds the anomalies in the months after it               |
 | `server/src/services/anomalies/statistics.test.ts` | is not dragged upwards by the outlier it is meant to catch     |
 | `server/src/services/anomalies/detect.test.ts`     | uses a median baseline, so one huge month cannot hide the next |
-| `server/src/services/anomalies/detect.test.ts`     | rates the ₹79,900 phone more severely than the ₹24,500 flight   |
+| `server/src/services/anomalies/detect.test.ts`     | rates the ₹79,900 phone more severely than the ₹24,500 flight  |
 
 **Status:** covered.
 

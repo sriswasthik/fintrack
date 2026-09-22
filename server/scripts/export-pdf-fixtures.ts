@@ -68,7 +68,9 @@ function buildStatement(rows: GeneratedTransaction[], password?: string): Promis
 
   const chunks: Buffer[] = [];
   doc.on('data', (chunk: Buffer) => chunks.push(chunk));
-  const done = new Promise<Buffer>((resolve) => doc.on('end', () => resolve(Buffer.concat(chunks))));
+  const done = new Promise<Buffer>((resolve) =>
+    doc.on('end', () => resolve(Buffer.concat(chunks))),
+  );
 
   let balance = 250000;
 
@@ -98,14 +100,7 @@ function buildStatement(rows: GeneratedTransaction[], password?: string): Promis
     const credit = t.amount < 0 ? inr(-t.amount) : '';
     balance -= t.amount;
 
-    const cells = [
-      statementDate(t.date),
-      t.description,
-      reference(t),
-      debit,
-      credit,
-      inr(balance),
-    ];
+    const cells = [statementDate(t.date), t.description, reference(t), debit, credit, inr(balance)];
     COLUMNS.forEach((c, i) =>
       doc.text(cells[i], c.x, y, { width: c.width, align: c.align, lineBreak: false }),
     );

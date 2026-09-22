@@ -472,7 +472,10 @@ describe('statement period', () => {
     await chooseAccount(user);
     await choosePeriod(user, 'Quarterly');
 
-    await user.upload(screen.getByLabelText('CSV or PDF files'), [pdfFile('a.pdf'), pdfFile('b.pdf')]);
+    await user.upload(screen.getByLabelText('CSV or PDF files'), [
+      pdfFile('a.pdf'),
+      pdfFile('b.pdf'),
+    ]);
 
     expect(inspectStatementMock).not.toHaveBeenCalled();
   });

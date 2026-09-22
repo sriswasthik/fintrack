@@ -28,7 +28,6 @@ import {
   type Transaction,
 } from '@/lib/transactions';
 
-
 /** Amounts are compared in whole cents, exactly as the server does. */
 const cents = (amount: number) => Math.round(amount * 100);
 

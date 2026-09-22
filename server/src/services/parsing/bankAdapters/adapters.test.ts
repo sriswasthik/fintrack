@@ -95,7 +95,10 @@ describe('the HDFC adapter', () => {
   it('reads every row correctly', async () => {
     const result = parseWithAdapter(await load('statement_hdfc.pdf'));
     expect(result?.source).toBe('hdfc');
-    expectMatchesTruth(result!.rows, dataset.filter((t) => t.date.startsWith('2026-03')));
+    expectMatchesTruth(
+      result!.rows,
+      dataset.filter((t) => t.date.startsWith('2026-03')),
+    );
   });
 
   it('tells a withdrawal from a deposit by which column it is printed in', async () => {

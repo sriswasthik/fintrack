@@ -44,21 +44,56 @@ interface Row {
  */
 const ROWS: Row[] = [
   // Sam: out, back, and a second, unequal round trip months later.
-  { date: '2026-05-06', description: 'PAYTM WALLET TO SAM R', merchant: 'PAYTM WALLET', amount: 3500 },
-  { date: '2026-05-11', description: 'PAYTM WALLET FROM SAM R', merchant: 'PAYTM WALLET', amount: -3500 },
-  { date: '2026-07-02', description: 'PAYTM WALLET TO SAM R', merchant: 'PAYTM WALLET', amount: 1250.5 },
-  { date: '2026-07-19', description: 'PAYTM WALLET FROM SAM R', merchant: 'PAYTM WALLET', amount: -400.25 },
+  {
+    date: '2026-05-06',
+    description: 'PAYTM WALLET TO SAM R',
+    merchant: 'PAYTM WALLET',
+    amount: 3500,
+  },
+  {
+    date: '2026-05-11',
+    description: 'PAYTM WALLET FROM SAM R',
+    merchant: 'PAYTM WALLET',
+    amount: -3500,
+  },
+  {
+    date: '2026-07-02',
+    description: 'PAYTM WALLET TO SAM R',
+    merchant: 'PAYTM WALLET',
+    amount: 1250.5,
+  },
+  {
+    date: '2026-07-19',
+    description: 'PAYTM WALLET FROM SAM R',
+    merchant: 'PAYTM WALLET',
+    amount: -400.25,
+  },
 
   // Priya: one balanced round trip.
-  { date: '2026-06-02', description: 'PAYTM WALLET TO PRIYA N', merchant: 'PAYTM WALLET', amount: 6000 },
-  { date: '2026-06-08', description: 'PAYTM WALLET FROM PRIYA N', merchant: 'PAYTM WALLET', amount: -6000 },
+  {
+    date: '2026-06-02',
+    description: 'PAYTM WALLET TO PRIYA N',
+    merchant: 'PAYTM WALLET',
+    amount: 6000,
+  },
+  {
+    date: '2026-06-08',
+    description: 'PAYTM WALLET FROM PRIYA N',
+    merchant: 'PAYTM WALLET',
+    amount: -6000,
+  },
 
   // A business, so the listing has something that is not a person in it.
   { date: '2026-06-03', description: 'SWIGGY', merchant: 'SWIGGY', amount: 480 },
   { date: '2026-06-17', description: 'SWIGGY', merchant: 'SWIGGY', amount: 655.75 },
 
   // A line with no counterparty at all. Must not become a payee.
-  { date: '2026-06-21', description: 'ATW-41223 CASH WDL', merchant: 'ATW-41223 CASH WDL', amount: 5000 },
+  {
+    date: '2026-06-21',
+    description: 'ATW-41223 CASH WDL',
+    merchant: 'ATW-41223 CASH WDL',
+    amount: 5000,
+  },
 ];
 
 /** What Sam's numbers must come to. Written out so the test states the claim. */
@@ -121,7 +156,12 @@ beforeAll(async () => {
 
   userId = await seedUser(EMAIL, ROWS);
   otherUserId = await seedUser(OTHER_EMAIL, [
-    { date: '2026-06-04', description: 'PAYTM WALLET TO SAM R', merchant: 'PAYTM WALLET', amount: 999 },
+    {
+      date: '2026-06-04',
+      description: 'PAYTM WALLET TO SAM R',
+      merchant: 'PAYTM WALLET',
+      amount: 999,
+    },
   ]);
 
   const otherPayee = await prisma.payee.findFirstOrThrow({
@@ -201,7 +241,10 @@ describe.skipIf(!hasDatabase)('GET /api/payees', () => {
   it('tells a person from a business', async () => {
     const response = await request(app).get('/api/payees').set(auth()).expect(200);
     const byName = new Map(
-      response.body.payees.map((p: { displayName: string; type: string }) => [p.displayName, p.type]),
+      response.body.payees.map((p: { displayName: string; type: string }) => [
+        p.displayName,
+        p.type,
+      ]),
     );
 
     expect(byName.get('SAM R')).toBe('PERSON');
@@ -240,7 +283,9 @@ describe.skipIf(!hasDatabase)('GET /api/payees', () => {
       .get('/api/payees?sort=lastTransactionAt')
       .set(auth())
       .expect(200);
-    const dates = response.body.payees.map((p: { lastTransactionAt: string }) => p.lastTransactionAt);
+    const dates = response.body.payees.map(
+      (p: { lastTransactionAt: string }) => p.lastTransactionAt,
+    );
 
     expect(dates).toEqual([...dates].sort().reverse());
   });
@@ -347,7 +392,10 @@ describe.skipIf(!hasDatabase)('GET /api/payees/:id', () => {
   }
 
   it('returns the same totals as the listing', async () => {
-    const response = await request(app).get(`/api/payees/${await samId()}`).set(auth()).expect(200);
+    const response = await request(app)
+      .get(`/api/payees/${await samId()}`)
+      .set(auth())
+      .expect(200);
 
     expect(response.body.payee).toMatchObject({
       displayName: 'SAM R',
@@ -360,7 +408,10 @@ describe.skipIf(!hasDatabase)('GET /api/payees/:id', () => {
   });
 
   it('returns the full history, newest first, labelled by direction', async () => {
-    const response = await request(app).get(`/api/payees/${await samId()}`).set(auth()).expect(200);
+    const response = await request(app)
+      .get(`/api/payees/${await samId()}`)
+      .set(auth())
+      .expect(200);
     const history = response.body.payee.transactionHistory;
 
     expect(history).toHaveLength(SAM.transactions);
@@ -381,7 +432,10 @@ describe.skipIf(!hasDatabase)('GET /api/payees/:id', () => {
   it('has a history that adds up to the totals it reports', async () => {
     // The strongest form of the claim: the summary is not a separate number
     // that happens to look right, it is the rows.
-    const response = await request(app).get(`/api/payees/${await samId()}`).set(auth()).expect(200);
+    const response = await request(app)
+      .get(`/api/payees/${await samId()}`)
+      .set(auth())
+      .expect(200);
     const { paid, received, net, transactionHistory } = response.body.payee;
 
     const sum = (predicate: (amount: number) => boolean) =>
@@ -396,7 +450,10 @@ describe.skipIf(!hasDatabase)('GET /api/payees/:id', () => {
   });
 
   it('names the account each transaction sits on', async () => {
-    const response = await request(app).get(`/api/payees/${await samId()}`).set(auth()).expect(200);
+    const response = await request(app)
+      .get(`/api/payees/${await samId()}`)
+      .set(auth())
+      .expect(200);
 
     response.body.payee.transactionHistory.forEach((t: { accountName: string }) => {
       expect(t.accountName).toBe('Everyday Checking');

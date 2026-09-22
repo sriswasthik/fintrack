@@ -22,7 +22,9 @@ describe('parseModelResponse', () => {
   });
 
   it('survives a markdown fence the model added anyway', () => {
-    const rows = parseModelResponse('```json\n{"rows":[{"date":"01/03/2026","description":"X"}]}\n```');
+    const rows = parseModelResponse(
+      '```json\n{"rows":[{"date":"01/03/2026","description":"X"}]}\n```',
+    );
     expect(rows).toHaveLength(1);
   });
 

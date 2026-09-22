@@ -21,7 +21,6 @@ vi.mock('@/context/auth-context', () => ({
   }),
 }));
 
-
 vi.mock('@/lib/insights', async (importOriginal) => {
   const actual = await importOriginal();
   return { ...(actual as object), fetchInsights: vi.fn(), dismissInsight: vi.fn() };

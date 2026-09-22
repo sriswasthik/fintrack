@@ -46,7 +46,11 @@ export const csvUpload = multer({
   },
 });
 
-const PDF_MIME_TYPES = new Set(['application/pdf', 'application/x-pdf', 'application/octet-stream']);
+const PDF_MIME_TYPES = new Set([
+  'application/pdf',
+  'application/x-pdf',
+  'application/octet-stream',
+]);
 
 /**
  * PDF statements.

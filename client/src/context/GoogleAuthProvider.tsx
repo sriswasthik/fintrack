@@ -23,9 +23,7 @@ export function GoogleAuthProvider({ children }: { children: ReactNode }) {
   const [state, setState] = useState<GoogleScriptState>('pending');
 
   if (!googleSignInEnabled()) {
-    return (
-      <GoogleScriptContext.Provider value="disabled">{children}</GoogleScriptContext.Provider>
-    );
+    return <GoogleScriptContext.Provider value="disabled">{children}</GoogleScriptContext.Provider>;
   }
 
   return (

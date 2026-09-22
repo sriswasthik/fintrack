@@ -46,7 +46,6 @@ import {
 
 const PREVIEW_LIMIT = 20;
 
-
 /** Chosen by extension rather than MIME type, which browsers disagree about. */
 function isPdf(file: File): boolean {
   return /\.pdf$/i.test(file.name) || file.type === 'application/pdf';
@@ -162,8 +161,7 @@ export function UploadPage() {
   });
 
   const batchMutation = useMutation({
-    mutationFn: () =>
-      parseStatementBatch({ files, accountId, passwords: batchPasswords }),
+    mutationFn: () => parseStatementBatch({ files, accountId, passwords: batchPasswords }),
     onSuccess: (data) => {
       setResult(null);
       setBatch(data);
@@ -177,8 +175,7 @@ export function UploadPage() {
   });
 
   const commitMutation = useMutation({
-    mutationFn: () =>
-      commitImport({ accountId, rows: (batch ?? preview!).rows, resolutions }),
+    mutationFn: () => commitImport({ accountId, rows: (batch ?? preview!).rows, resolutions }),
     onSuccess: (data) => {
       setResult(data);
       setPreview(null);
@@ -228,7 +225,7 @@ export function UploadPage() {
   // cannot be sent without the password the inspection said it needs.
   const pdfReady =
     !pdfChosen ||
-    (requiresPassword === false) ||
+    requiresPassword === false ||
     (requiresPassword === true && password.trim().length > 0);
   const canUpload =
     chosenCount > 0 &&
@@ -254,8 +251,7 @@ export function UploadPage() {
       <div className="space-y-1">
         <h1 className="text-2xl font-semibold tracking-tight">Import transactions</h1>
         <p className="text-muted-foreground text-sm">
-          Upload a CSV export or a PDF statement. Nothing is saved until you confirm the
-          preview.
+          Upload a CSV export or a PDF statement. Nothing is saved until you confirm the preview.
         </p>
       </div>
 

@@ -344,6 +344,10 @@ export function parseGenericStatement(pages: TextItemsByPage): StatementParseRes
 /** The whole document as plain text, for the model fallback to read. */
 export function toPlainText(pages: TextItemsByPage): string {
   return pages
-    .map((page) => groupIntoLines(page).map((line) => line.text).join('\n'))
+    .map((page) =>
+      groupIntoLines(page)
+        .map((line) => line.text)
+        .join('\n'),
+    )
     .join('\n\n');
 }

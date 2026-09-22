@@ -1,10 +1,6 @@
 import { Router } from 'express';
 
-import {
-  inspectStatement,
-  parseStatement,
-  parseStatementBatch,
-} from '../controllers/statements';
+import { inspectStatement, parseStatement, parseStatementBatch } from '../controllers/statements';
 import { asyncHandler } from '../middleware/errorHandler';
 import { uploadLimiter } from '../middleware/rateLimit';
 import { MAX_BATCH_FILES, pdfUpload } from '../middleware/upload';

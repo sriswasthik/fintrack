@@ -53,7 +53,12 @@ export const EVAL_SET: EvalCase[] = [
     difficulty: 'unresolved',
     note: 'Direct-to-consumer shoe brand',
   },
-  { merchant: 'TESCO', expected: 'GROCERIES', difficulty: 'control', note: 'UK supermarket; Phase 8 added it as a brand' },
+  {
+    merchant: 'TESCO',
+    expected: 'GROCERIES',
+    difficulty: 'control',
+    note: 'UK supermarket; Phase 8 added it as a brand',
+  },
   {
     merchant: 'MUJI',
     expected: 'SHOPPING',
@@ -72,7 +77,12 @@ export const EVAL_SET: EvalCase[] = [
     difficulty: 'control',
     note: 'French railway; a brand rule since Phase 8',
   },
-  { merchant: 'TRENITALIA', expected: 'TRAVEL', difficulty: 'control', note: 'Italian railway; a brand rule since Phase 8' },
+  {
+    merchant: 'TRENITALIA',
+    expected: 'TRAVEL',
+    difficulty: 'control',
+    note: 'Italian railway; a brand rule since Phase 8',
+  },
 
   // --- More long-tail merchants of the same shape ------------------------
   {
@@ -144,7 +154,12 @@ export const EVAL_SET: EvalCase[] = [
     difficulty: 'unresolved',
     note: 'Recurring digital subscription',
   },
-  { merchant: 'PGE', expected: 'UTILITIES', difficulty: 'unresolved', note: 'Utility, as an acronym' },
+  {
+    merchant: 'PGE',
+    expected: 'UTILITIES',
+    difficulty: 'unresolved',
+    note: 'Utility, as an acronym',
+  },
   {
     merchant: 'USPS',
     expected: 'BUSINESS',

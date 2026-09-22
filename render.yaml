@@ -43,4 +43,4 @@ services:
       - key: JWT_REFRESH_SECRET
         generateValue: true
       - key: DEMO_MODE
-        value: "on"
+        value: 'on'

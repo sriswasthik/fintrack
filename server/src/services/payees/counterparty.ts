@@ -92,13 +92,15 @@ const NOT_A_NAME = new Set([
 
 /** Collapses whitespace and trailing reference junk from a captured name. */
 function tidy(name: string): string {
-  return name
-    .replace(/[*/|]+/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim()
-    // A trailing reference number is not part of anybody's name.
-    .replace(/\s+\d{4,}$/, '')
-    .trim();
+  return (
+    name
+      .replace(/[*/|]+/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim()
+      // A trailing reference number is not part of anybody's name.
+      .replace(/\s+\d{4,}$/, '')
+      .trim()
+  );
 }
 
 /**

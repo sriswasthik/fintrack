@@ -52,9 +52,8 @@ export async function parseStatement(input: {
 
 /** The server's machine-readable reason, when it gave one. */
 export function statementFailure(error: unknown): StatementFailure | null {
-  const reason = (
-    error as { response?: { data?: { details?: { reason?: string } } } } | null
-  )?.response?.data?.details?.reason;
+  const reason = (error as { response?: { data?: { details?: { reason?: string } } } } | null)
+    ?.response?.data?.details?.reason;
   return (reason as StatementFailure | undefined) ?? null;
 }
 

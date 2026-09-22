@@ -363,7 +363,8 @@ interface BatchRow extends FlaggedRow {
 export const parseStatementBatch: RequestHandler = async (req, res) => {
   const userId = currentUserId(req);
   const files = (req.files as Express.Multer.File[] | undefined) ?? [];
-  if (files.length === 0) throw new HttpError(400, 'Expected at least one PDF in the "files" field');
+  if (files.length === 0)
+    throw new HttpError(400, 'Expected at least one PDF in the "files" field');
 
   const { accountId, passwords } = batchBodySchema.parse(req.body);
   await requireAccount(userId, accountId);

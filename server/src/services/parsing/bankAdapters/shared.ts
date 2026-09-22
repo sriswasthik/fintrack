@@ -72,7 +72,9 @@ export function buildRow(input: {
    */
   merchantFrom?: string;
 }): NormalizedRow {
-  const { rawMerchant, normalizedMerchant } = extractMerchant(input.merchantFrom ?? input.description);
+  const { rawMerchant, normalizedMerchant } = extractMerchant(
+    input.merchantFrom ?? input.description,
+  );
   return {
     index: input.index,
     date: input.date,

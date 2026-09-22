@@ -6,7 +6,6 @@ import type { CategoryTotal } from '@/lib/dashboard';
 import type { Category } from '@/lib/transactions';
 import { formatINRCompact } from '@/lib/currency';
 
-
 /**
  * Part-to-whole at a glance.
  *

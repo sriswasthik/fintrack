@@ -249,9 +249,9 @@ describe('POST /api/statements/parse', () => {
 
   it('refuses a reader answer it could not validate', async () => {
     setStatementReader({
-      read: vi.fn().mockRejectedValue(
-        new StatementReaderResponseError('The reader did not return JSON'),
-      ),
+      read: vi
+        .fn()
+        .mockRejectedValue(new StatementReaderResponseError('The reader did not return JSON')),
     });
 
     const letter = await buildTextOnlyPdf();
@@ -283,7 +283,9 @@ async function buildTextOnlyPdf(): Promise<Buffer> {
   const doc = new PDFDocument({ size: 'A4', margin: 40 });
   const chunks: Buffer[] = [];
   doc.on('data', (chunk: Buffer) => chunks.push(chunk));
-  const done = new Promise<Buffer>((resolve) => doc.on('end', () => resolve(Buffer.concat(chunks))));
+  const done = new Promise<Buffer>((resolve) =>
+    doc.on('end', () => resolve(Buffer.concat(chunks))),
+  );
   doc.fontSize(11).text('Dear customer,', 40, 60);
   doc.text('Thank you for banking with us. Your statement follows overleaf.', 40, 90);
   doc.end();
@@ -339,8 +341,8 @@ describe('POST /api/statements/parse-batch', () => {
     const response = await batchRequest(quarter).expect(200);
 
     expect(response.body.crossFileDuplicateCount).toBeGreaterThan(0);
-    const crossFile = response.body.rows.filter(
-      (r: { duplicate: { reason: string } | null }) => r.duplicate?.reason?.includes('.pdf'),
+    const crossFile = response.body.rows.filter((r: { duplicate: { reason: string } | null }) =>
+      r.duplicate?.reason?.includes('.pdf'),
     );
     expect(crossFile).toHaveLength(response.body.crossFileDuplicateCount);
     expect(crossFile[0].duplicate.reason).toMatch(/statement_hdfc_2026_04\.pdf/);

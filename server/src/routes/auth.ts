@@ -1,6 +1,14 @@
 import { Router } from 'express';
 
-import { demoSession, googleSignIn, login, logout, me, refresh, register } from '../controllers/auth';
+import {
+  demoSession,
+  googleSignIn,
+  login,
+  logout,
+  me,
+  refresh,
+  register,
+} from '../controllers/auth';
 import { requireAuth } from '../middleware/auth';
 import { asyncHandler } from '../middleware/errorHandler';
 import { authLimiter, refreshLimiter } from '../middleware/rateLimit';

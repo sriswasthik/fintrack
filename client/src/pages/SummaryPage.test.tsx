@@ -22,7 +22,6 @@ vi.mock('@/context/auth-context', () => ({
   }),
 }));
 
-
 vi.mock('@/lib/summary', async (importOriginal) => {
   const actual = await importOriginal();
   return { ...(actual as object), fetchSummary: vi.fn(), regenerateSummary: vi.fn() };
