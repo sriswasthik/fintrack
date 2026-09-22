@@ -1,0 +1,13 @@
+# Check every text file out with LF, whatever the machine's core.autocrlf says.
+# Several tests compare committed files byte-for-byte with what a generator
+# produces (test-data/README.md, docs/EDGE_CASES.md), and Prettier expects LF,
+# so a Windows checkout that rewrote them to CRLF failed on a clean clone.
+* text=auto eol=lf
+
+# The synthetic CSV is RFC 4180, which uses CRLF, and the generator writes it
+# that way on purpose (server/prisma/test-data-files.ts). Stored and checked out
+# byte-for-byte, with no conversion either way.
+*.csv -text
+
+*.pdf binary
+*.png binary
