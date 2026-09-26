@@ -206,7 +206,11 @@ describe('POST /api/transactions/upload', () => {
     expect(response.body.status).toBe('needs-mapping');
     expect(response.body.headers).toEqual(['Posted', 'Merchant Name', 'Debit']);
     expect(response.body.sampleRows).toHaveLength(2);
-    expect(response.body.requiredFields).toEqual(['date', 'description', 'amount']);
+    expect(response.body.requiredFields).toEqual([
+      'date',
+      'description',
+      'amount | debit + credit',
+    ]);
     expect(response.body.knownPresets.map((p: { id: string }) => p.id)).toEqual([
       'chase',
       'amex',
@@ -229,6 +233,45 @@ describe('POST /api/transactions/upload', () => {
     expect(response.body.status).toBe('preview');
     expect(response.body.preset).toBe('custom');
     expect(response.body.rows[0]).toMatchObject({ normalizedMerchant: 'ACME', amount: 10 });
+  });
+
+  it('reads an Indian bank export: header below the account details, debit/credit columns', async () => {
+    const hdfc = [
+      'HDFC BANK Ltd.,,,,,,',
+      'Account No : XXXXXXXX1234,,,,,,',
+      'Date,Narration,Chq./Ref.No.,Value Dt,Withdrawal Amt.,Deposit Amt.,Closing Balance',
+      '03/05/26,UPI-SWIGGY-SWIGGY@ICICI,0000606012345678,03/05/26,450.00,,52550.00',
+      '04/05/26,NEFT CR-NORTHWIND LABS SALARY,N064260012345,04/05/26,,85000.00,137550.00',
+    ].join('\n');
+
+    const response = await upload(hdfc).expect(200);
+
+    expect(response.body.status).toBe('preview');
+    expect(response.body.preset).toBe('debit-credit');
+    // Nothing in the file proves the order, so the preview says it assumed one.
+    expect(response.body.dateOrder).toEqual({ order: 'dmy', basis: 'default' });
+    expect(
+      response.body.rows.map((r: { date: string; amount: number }) => [r.date, r.amount]),
+    ).toEqual([
+      ['2026-05-03', 450],
+      ['2026-05-04', -85000],
+    ]);
+  });
+
+  it('re-reads month-first when the mapping says so', async () => {
+    const csv = ['Date,Description,Amount', '03/05/2026,X CORP,1.00'].join('\n');
+
+    const response = await upload(csv, {
+      mapping: JSON.stringify({
+        date: 'Date',
+        description: 'Description',
+        amount: 'Amount',
+        dateOrder: 'mdy',
+      }),
+    }).expect(200);
+
+    expect(response.body.dateOrder).toEqual({ order: 'mdy', basis: 'mapping' });
+    expect(response.body.rows[0].date).toBe('2026-03-05');
   });
 
   it('detects a Chase export and flips its sign convention', async () => {

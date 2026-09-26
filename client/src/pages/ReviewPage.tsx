@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { Link } from 'react-router-dom';
 
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -74,7 +75,12 @@ export function ReviewPage() {
         <h1 className="text-2xl font-semibold tracking-tight">Review queue</h1>
         <p className="text-muted-foreground text-sm">
           Transactions nothing could categorize with confidence. Accepting or correcting one teaches
-          a rule, so the same merchant is never asked about again.
+          a rule, so the same merchant is never asked about again. Every rule taught so far is on
+          the{' '}
+          <Link to="/rules" className="text-foreground underline underline-offset-4">
+            learned rules
+          </Link>{' '}
+          page, where it can be changed or forgotten.
         </p>
       </div>
 

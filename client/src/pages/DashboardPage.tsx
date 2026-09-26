@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 
+import { BudgetsPanel } from '@/components/dashboard/BudgetsPanel';
 import { CategoryDonut } from '@/components/dashboard/CategoryDonut';
 import { CategoryDrilldown } from '@/components/dashboard/CategoryDrilldown';
 import { CommitmentsPanel } from '@/components/dashboard/CommitmentsPanel';
@@ -249,6 +250,10 @@ export function DashboardPage() {
             accountId={accountId === 'all' ? undefined : accountId}
             india={india.data}
           />
+
+          {/* Budgets follow the month, not the account filter: a limit is on
+              the household's spending in a category, wherever it was paid from. */}
+          <BudgetsPanel month={currentMonth ?? undefined} />
 
           {/* Its own range, deliberately: the tiles above answer "this month",
           and the question this one exists for is "what about today / the

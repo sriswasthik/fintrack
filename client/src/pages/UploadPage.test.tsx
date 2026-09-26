@@ -4,6 +4,7 @@ import userEvent from '@testing-library/user-event';
 import type { ReactNode } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { createAccount } from '@/lib/accounts';
 import { UploadPage } from '@/pages/UploadPage';
 import type * as StatementsModule from '@/lib/statements';
 import type { BatchPreview, BatchRow } from '@/lib/statements';
@@ -24,6 +25,11 @@ vi.mock('@/lib/transactions', () => ({
   commitImport: vi.fn(),
 }));
 
+vi.mock('@/lib/accounts', async (importOriginal) => ({
+  ...(await importOriginal<object>()),
+  createAccount: vi.fn(),
+}));
+
 vi.mock('@/lib/statements', async (importOriginal) => {
   const actual = await importOriginal<typeof StatementsModule>();
   return {
@@ -35,6 +41,7 @@ vi.mock('@/lib/statements', async (importOriginal) => {
 });
 
 const fetchAccountsMock = vi.mocked(fetchAccounts);
+const createAccountMock = vi.mocked(createAccount);
 const inspectStatementMock = vi.mocked(inspectStatement);
 const parseStatementMock = vi.mocked(parseStatement);
 const parseStatementBatchMock = vi.mocked(parseStatementBatch);
@@ -187,6 +194,17 @@ describe('UploadPage', () => {
     expect(commitImportMock.mock.calls[0][0].rows).toHaveLength(3);
   });
 
+  it('records the file name on the import, for the history', async () => {
+    const user = userEvent.setup();
+    renderPage();
+    await chooseAccountAndFile(user);
+    await user.click(screen.getByRole('button', { name: 'Upload' }));
+    await user.click(await screen.findByRole('button', { name: 'Confirm Import' }));
+
+    await waitFor(() => expect(commitImportMock).toHaveBeenCalledTimes(1));
+    expect(commitImportMock.mock.calls[0][0].fileNames).toEqual(['export.csv']);
+  });
+
   it('reports the result once the import completes', async () => {
     const user = userEvent.setup();
     renderPage();
@@ -215,6 +233,81 @@ describe('UploadPage', () => {
 
     expect(await screen.findByText('Map the columns')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Parse with this mapping' })).toBeDisabled();
+  });
+
+  it('maps separate debit and credit columns, which is how Indian banks export', async () => {
+    uploadCsvMock.mockResolvedValueOnce({
+      status: 'needs-mapping',
+      fileName: 'bank.csv',
+      headers: ['On', 'Particulars', 'Out', 'In'],
+      sampleRows: [],
+      requiredFields: ['date', 'description', 'amount | debit + credit'],
+      knownPresets: [],
+    });
+    uploadCsvMock.mockResolvedValueOnce(PREVIEW);
+
+    const user = userEvent.setup();
+    renderPage();
+    await chooseAccountAndFile(user);
+    await user.click(screen.getByRole('button', { name: 'Upload' }));
+    await screen.findByText('Map the columns');
+
+    const pick = async (label: string, option: string) => {
+      await user.click(screen.getByLabelText(label));
+      await user.click(await screen.findByRole('option', { name: option }));
+    };
+    await pick('Date', 'On');
+    await pick('Description', 'Particulars');
+    await pick('Money out (debit / withdrawal)', 'Out');
+    await pick('Money in (credit / deposit)', 'In');
+    await pick('Dates are written', 'Day first (31/01/2026)');
+    await user.click(screen.getByRole('button', { name: 'Parse with this mapping' }));
+
+    await waitFor(() => expect(uploadCsvMock).toHaveBeenCalledTimes(2));
+    expect(uploadCsvMock.mock.calls[1][0].mapping).toEqual({
+      date: 'On',
+      description: 'Particulars',
+      debit: 'Out',
+      credit: 'In',
+      amountSign: 'debit-positive',
+      dateOrder: 'dmy',
+    });
+  });
+
+  it('says when the day/month order was assumed, and re-reads it the other way on request', async () => {
+    uploadCsvMock.mockResolvedValue({
+      ...PREVIEW,
+      dateOrder: { order: 'dmy', basis: 'default' },
+    });
+
+    const user = userEvent.setup();
+    renderPage();
+    await chooseAccountAndFile(user);
+    await user.click(screen.getByRole('button', { name: 'Upload' }));
+
+    const notice = await screen.findByRole('status');
+    expect(notice).toHaveTextContent(/day-first or month-first/);
+    expect(notice).toHaveTextContent(/day first \(03\/05\/2026 is 3 May\)/);
+
+    await user.click(within(notice).getByRole('button', { name: 'Read month first instead' }));
+
+    await waitFor(() => expect(uploadCsvMock).toHaveBeenCalledTimes(2));
+    expect(uploadCsvMock.mock.calls[1][0].mapping).toMatchObject({
+      ...PREVIEW.mapping,
+      dateOrder: 'mdy',
+    });
+  });
+
+  it('says nothing about date order when the file proved it', async () => {
+    uploadCsvMock.mockResolvedValue({ ...PREVIEW, dateOrder: { order: 'dmy', basis: 'file' } });
+
+    const user = userEvent.setup();
+    renderPage();
+    await chooseAccountAndFile(user);
+    await user.click(screen.getByRole('button', { name: 'Upload' }));
+
+    await screen.findByRole('button', { name: 'Confirm Import' });
+    expect(screen.queryByText(/Dates were read/)).not.toBeInTheDocument();
   });
 
   it('surfaces a server error', async () => {
@@ -570,5 +663,54 @@ describe('the combined batch preview', () => {
 
     await waitFor(() => expect(parseStatementBatchMock).toHaveBeenCalledTimes(2));
     expect(parseStatementBatchMock.mock.calls[1][0].passwords).toEqual({ 1: 'hunter2' });
+  });
+});
+
+describe('a new user with no bank accounts', () => {
+  beforeEach(() => {
+    fetchAccountsMock.mockResolvedValue([]);
+    createAccountMock.mockResolvedValue({ id: 'acct_new', name: 'HDFC Savings', type: 'CHECKING' });
+  });
+
+  it('is asked to add one before anything else — the page used to be a dead end', async () => {
+    renderPage();
+    expect(await screen.findByText('First, add your bank account')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Add account and continue' })).toBeDisabled();
+  });
+
+  it('adds the account and selects it for the import', async () => {
+    const user = userEvent.setup();
+    renderPage();
+
+    await user.type(await screen.findByLabelText('Account name'), 'HDFC Savings');
+    // The list refetches after the create; by then it holds the new account.
+    fetchAccountsMock.mockResolvedValue([
+      { id: 'acct_new', name: 'HDFC Savings', type: 'CHECKING' },
+    ]);
+    await user.click(screen.getByRole('button', { name: 'Add account and continue' }));
+
+    await waitFor(() =>
+      expect(createAccountMock.mock.calls[0][0]).toEqual({
+        name: 'HDFC Savings',
+        type: 'CHECKING',
+      }),
+    );
+    await waitFor(() =>
+      expect(screen.queryByText('First, add your bank account')).not.toBeInTheDocument(),
+    );
+    expect(screen.getByLabelText('Account')).toHaveTextContent('HDFC Savings');
+  });
+
+  it('says why the server refused, such as a name already taken', async () => {
+    const user = userEvent.setup();
+    createAccountMock.mockRejectedValue({
+      response: { data: { error: 'You already have an account called "HDFC Savings"' } },
+    });
+    renderPage();
+
+    await user.type(await screen.findByLabelText('Account name'), 'HDFC Savings');
+    await user.click(screen.getByRole('button', { name: 'Add account and continue' }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('already have an account');
   });
 });

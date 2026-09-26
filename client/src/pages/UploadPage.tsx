@@ -1,6 +1,7 @@
 import { useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
+import { AddAccountForm } from '@/components/AddAccountForm';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -28,6 +29,7 @@ import {
   uploadCsv,
   type ColumnMapping,
   type CommitResult,
+  type DateOrder,
   type NeedsMapping,
   type PreviewRow,
   type Resolution,
@@ -82,8 +84,11 @@ export function UploadPage() {
   const [needsMapping, setNeedsMapping] = useState<NeedsMapping | null>(null);
   const [resolutions, setResolutions] = useState<Record<number, Resolution>>({});
   const [result, setResult] = useState<CommitResult | null>(null);
+  const [addingAccount, setAddingAccount] = useState(false);
 
   const accounts = useQuery({ queryKey: ['accounts'], queryFn: fetchAccounts });
+  /** A new user has no accounts, and nothing can be imported until they add one. */
+  const noAccounts = accounts.isSuccess && accounts.data.length === 0;
 
   const multiple = ALLOWS_MULTIPLE[period];
 
@@ -175,7 +180,19 @@ export function UploadPage() {
   });
 
   const commitMutation = useMutation({
-    mutationFn: () => commitImport({ accountId, rows: (batch ?? preview!).rows, resolutions }),
+    mutationFn: () =>
+      commitImport({
+        accountId,
+        rows: (batch ?? preview!).rows,
+        resolutions,
+        // Recorded on the import, so the history on the settings page can say
+        // which statement it was when somebody wants to undo one.
+        fileNames: batch
+          ? batch.files.filter((f) => f.status === 'parsed').map((f) => f.fileName)
+          : preview
+            ? [preview.fileName]
+            : [],
+      }),
     onSuccess: (data) => {
       setResult(data);
       setPreview(null);
@@ -255,6 +272,31 @@ export function UploadPage() {
         </p>
       </div>
 
+      {(noAccounts || addingAccount) && (
+        <Card>
+          <CardHeader>
+            <CardTitle>
+              {noAccounts ? 'First, add your bank account' : 'Add a bank account'}
+            </CardTitle>
+            <CardDescription>
+              {noAccounts
+                ? 'Every import goes into an account, so FinTrack can tell a transfer between two of yours from spending. You can add more, rename or remove them later in Settings.'
+                : 'It will be selected for this import.'}
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <AddAccountForm
+              submitLabel={noAccounts ? 'Add account and continue' : 'Add account'}
+              onCreated={(account) => {
+                setAccountId(account.id);
+                setAddingAccount(false);
+              }}
+              onCancel={noAccounts ? undefined : () => setAddingAccount(false)}
+            />
+          </CardContent>
+        </Card>
+      )}
+
       <Card>
         <CardHeader>
           <CardTitle>1. Choose a file</CardTitle>
@@ -265,9 +307,20 @@ export function UploadPage() {
         </CardHeader>
         <CardContent className="flex flex-col gap-4 sm:flex-row sm:items-end">
           <div className="flex-1 space-y-2">
-            <label className="text-sm font-medium" htmlFor="account">
-              Account
-            </label>
+            <div className="flex items-center justify-between gap-2">
+              <label className="text-sm font-medium" htmlFor="account">
+                Account
+              </label>
+              {!noAccounts && !addingAccount && accounts.isSuccess && (
+                <button
+                  type="button"
+                  className="text-muted-foreground hover:text-foreground text-xs underline underline-offset-4"
+                  onClick={() => setAddingAccount(true)}
+                >
+                  New account
+                </button>
+              )}
+            </div>
             <Select value={accountId} onValueChange={setAccountId}>
               <SelectTrigger id="account" aria-label="Account" className="w-full">
                 <SelectValue
@@ -519,6 +572,14 @@ export function UploadPage() {
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
+            {!batch && preview?.dateOrder && preview.dateOrder.basis !== 'file' && (
+              <DateOrderNotice
+                dateOrder={preview.dateOrder}
+                pending={uploadMutation.isPending}
+                onSwitch={(order) => submitUpload({ ...preview.mapping, dateOrder: order })}
+              />
+            )}
+
             <Tabs defaultValue="rows">
               <TabsList>
                 <TabsTrigger value="rows">First {PREVIEW_LIMIT} rows</TabsTrigger>
@@ -651,6 +712,47 @@ function PreviewTable({
   );
 }
 
+const DATE_ORDER_LABELS: Record<DateOrder, string> = {
+  dmy: 'day first (03/05/2026 is 3 May)',
+  mdy: 'month first (03/05/2026 is 5 March)',
+};
+
+/**
+ * Says how the dates in a CSV were read, when the file itself did not prove it.
+ *
+ * A wrong day/month order fails no row — every date just moves — so the one
+ * time it is a guess is the one time the preview has to say so.
+ */
+function DateOrderNotice({
+  dateOrder,
+  pending,
+  onSwitch,
+}: {
+  dateOrder: NonNullable<UploadPreview['dateOrder']>;
+  pending: boolean;
+  onSwitch: (order: DateOrder) => void;
+}) {
+  const other: DateOrder = dateOrder.order === 'dmy' ? 'mdy' : 'dmy';
+  return (
+    <div
+      role="status"
+      className="flex flex-col gap-3 rounded-md border border-amber-500/40 bg-amber-500/10 p-3 text-sm sm:flex-row sm:items-center sm:justify-between"
+    >
+      <p>
+        {dateOrder.basis === 'default' &&
+          'Nothing in this file shows whether its dates are day-first or month-first. '}
+        Dates were read {DATE_ORDER_LABELS[dateOrder.order]}. Check a few rows below against your
+        statement.
+      </p>
+      <Button size="sm" variant="outline" disabled={pending} onClick={() => onSwitch(other)}>
+        {pending ? 'Re-reading…' : `Read ${other === 'dmy' ? 'day' : 'month'} first instead`}
+      </Button>
+    </div>
+  );
+}
+
+type AmountLayout = 'single' | 'split';
+
 function ColumnMappingForm({
   needsMapping,
   onSubmit,
@@ -660,19 +762,50 @@ function ColumnMappingForm({
   onSubmit: (mapping: ColumnMapping) => void;
   pending: boolean;
 }) {
-  const [mapping, setMapping] = useState<ColumnMapping>({
+  const [layout, setLayout] = useState<AmountLayout>('split');
+  const [columns, setColumns] = useState({
     date: '',
     description: '',
     amount: '',
-    amountSign: 'debit-positive',
+    debit: '',
+    credit: '',
   });
+  const [amountSign, setAmountSign] = useState<ColumnMapping['amountSign']>('debit-positive');
+  const [dateOrder, setDateOrder] = useState<DateOrder | 'auto'>('auto');
 
-  const complete = mapping.date && mapping.description && mapping.amount;
-  const fields = [
-    { key: 'date', label: 'Date' },
-    { key: 'description', label: 'Description' },
-    { key: 'amount', label: 'Amount' },
-  ] as const;
+  const money =
+    layout === 'single' ? Boolean(columns.amount) : Boolean(columns.debit || columns.credit);
+  const complete = Boolean(columns.date && columns.description && money);
+
+  const fields =
+    layout === 'single'
+      ? ([
+          { key: 'date', label: 'Date' },
+          { key: 'description', label: 'Description' },
+          { key: 'amount', label: 'Amount' },
+        ] as const)
+      : ([
+          { key: 'date', label: 'Date' },
+          { key: 'description', label: 'Description' },
+          { key: 'debit', label: 'Money out (debit / withdrawal)' },
+          { key: 'credit', label: 'Money in (credit / deposit)' },
+        ] as const);
+
+  function submit() {
+    const mapping: ColumnMapping = {
+      date: columns.date,
+      description: columns.description,
+      amountSign,
+      ...(layout === 'single'
+        ? { amount: columns.amount }
+        : {
+            ...(columns.debit ? { debit: columns.debit } : {}),
+            ...(columns.credit ? { credit: columns.credit } : {}),
+          }),
+      ...(dateOrder === 'auto' ? {} : { dateOrder }),
+    };
+    onSubmit(mapping);
+  }
 
   return (
     <Card>
@@ -684,6 +817,42 @@ function ColumnMappingForm({
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
+        <div className="grid gap-4 sm:grid-cols-2">
+          <div className="space-y-2">
+            <label className="text-sm font-medium" htmlFor="map-layout">
+              Amounts are in
+            </label>
+            <Select value={layout} onValueChange={(value) => setLayout(value as AmountLayout)}>
+              <SelectTrigger id="map-layout" aria-label="Amounts are in" className="w-full">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="split">Separate debit and credit columns</SelectItem>
+                <SelectItem value="single">One amount column</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="space-y-2">
+            <label className="text-sm font-medium" htmlFor="map-date-order">
+              Dates are written
+            </label>
+            <Select
+              value={dateOrder}
+              onValueChange={(value) => setDateOrder(value as DateOrder | 'auto')}
+            >
+              <SelectTrigger id="map-date-order" aria-label="Dates are written" className="w-full">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="auto">Work it out from the file</SelectItem>
+                <SelectItem value="dmy">Day first (31/01/2026)</SelectItem>
+                <SelectItem value="mdy">Month first (01/31/2026)</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           {fields.map((field) => (
             <div key={field.key} className="space-y-2">
@@ -691,48 +860,47 @@ function ColumnMappingForm({
                 {field.label}
               </label>
               <Select
-                value={mapping[field.key]}
-                onValueChange={(value) => setMapping((prev) => ({ ...prev, [field.key]: value }))}
+                value={columns[field.key]}
+                onValueChange={(value) => setColumns((prev) => ({ ...prev, [field.key]: value }))}
               >
                 <SelectTrigger id={`map-${field.key}`} aria-label={field.label} className="w-full">
                   <SelectValue placeholder="Choose a column" />
                 </SelectTrigger>
                 <SelectContent>
-                  {needsMapping.headers.map((header) => (
-                    <SelectItem key={header} value={header}>
-                      {header}
-                    </SelectItem>
-                  ))}
+                  {needsMapping.headers
+                    .filter((header) => header.trim())
+                    .map((header) => (
+                      <SelectItem key={header} value={header}>
+                        {header}
+                      </SelectItem>
+                    ))}
                 </SelectContent>
               </Select>
             </div>
           ))}
 
-          <div className="space-y-2">
-            <label className="text-sm font-medium" htmlFor="map-sign">
-              Amount sign
-            </label>
-            <Select
-              value={mapping.amountSign}
-              onValueChange={(value) =>
-                setMapping((prev) => ({
-                  ...prev,
-                  amountSign: value as ColumnMapping['amountSign'],
-                }))
-              }
-            >
-              <SelectTrigger id="map-sign" aria-label="Amount sign" className="w-full">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="debit-positive">Purchases are positive</SelectItem>
-                <SelectItem value="credit-positive">Purchases are negative</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
+          {layout === 'single' && (
+            <div className="space-y-2">
+              <label className="text-sm font-medium" htmlFor="map-sign">
+                Amount sign
+              </label>
+              <Select
+                value={amountSign}
+                onValueChange={(value) => setAmountSign(value as ColumnMapping['amountSign'])}
+              >
+                <SelectTrigger id="map-sign" aria-label="Amount sign" className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="debit-positive">Purchases are positive</SelectItem>
+                  <SelectItem value="credit-positive">Purchases are negative</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          )}
         </div>
 
-        <Button onClick={() => onSubmit(mapping)} disabled={!complete || pending}>
+        <Button onClick={submit} disabled={!complete || pending}>
           {pending ? 'Parsing…' : 'Parse with this mapping'}
         </Button>
       </CardContent>

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 
 import { Badge } from '@/components/ui/badge';
@@ -23,7 +23,13 @@ import {
 import { Amount } from '@/components/Amount';
 import { SplitDialog } from '@/components/SplitDialog';
 import { EmptyState, ErrorState, Loading } from '@/components/states';
-import { fetchAccounts, fetchTransactions, type Transaction } from '@/lib/transactions';
+import { errorMessage } from '@/lib/errors';
+import {
+  downloadTransactionsCsv,
+  fetchAccounts,
+  fetchTransactions,
+  type Transaction,
+} from '@/lib/transactions';
 
 const PAGE_SIZE = 50;
 
@@ -49,6 +55,11 @@ export function TransactionsPage() {
   const rows = page?.transactions ?? [];
   const filtered = accountId !== 'all';
 
+  // Exports everything the filter matches, not just the page on screen.
+  const exportCsv = useMutation({
+    mutationFn: () => downloadTransactionsCsv(accountId === 'all' ? {} : { accountId }),
+  });
+
   return (
     <main className="mx-auto flex max-w-5xl flex-col gap-6 p-6">
       <div className="space-y-1">
@@ -70,28 +81,43 @@ export function TransactionsPage() {
                 : 'Nothing imported yet.'}
             </CardDescription>
           </div>
-          <Select
-            value={accountId}
-            onValueChange={(value) => {
-              setAccountId(value);
-              setOffset(0);
-            }}
-          >
-            <SelectTrigger aria-label="Account filter" className="w-56">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All accounts</SelectItem>
-              {(accounts.data ?? []).map((account) => (
-                <SelectItem key={account.id} value={account.id}>
-                  {account.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          <div className="flex flex-wrap items-center gap-2">
+            <Select
+              value={accountId}
+              onValueChange={(value) => {
+                setAccountId(value);
+                setOffset(0);
+              }}
+            >
+              <SelectTrigger aria-label="Account filter" className="w-56">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All accounts</SelectItem>
+                {(accounts.data ?? []).map((account) => (
+                  <SelectItem key={account.id} value={account.id}>
+                    {account.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={!page || page.total === 0 || exportCsv.isPending}
+              onClick={() => exportCsv.mutate()}
+            >
+              {exportCsv.isPending ? 'Exporting…' : 'Export CSV'}
+            </Button>
+          </div>
         </CardHeader>
 
         <CardContent className="space-y-4">
+          {exportCsv.isError && (
+            <p role="alert" className="text-destructive text-sm">
+              {errorMessage(exportCsv.error)}
+            </p>
+          )}
           <Table>
             <TableHeader>
               <TableRow>

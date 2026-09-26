@@ -14,6 +14,7 @@
  */
 import { extractMerchant } from './normalize';
 import { parseAmount, type ParsedRow, type RowError } from './csv';
+import { detectDateOrder, parseStatementDate } from './dates';
 import type { PdfPage, PdfTextItem, TextItemsByPage } from './pdf';
 
 /** Items drawn within this many points of each other are on the same line. */
@@ -189,68 +190,8 @@ function cellsOf(
   return cells;
 }
 
-/**
- * A statement date, which is `dd/mm/yyyy` far more often than not.
- *
- * The CSV path reads `03/05/2026` as March 5th, because that is what a US
- * export means by it. A statement from an Indian bank means May 3rd. Rather
- * than pick one and be quietly wrong half the time, the convention is settled
- * from the file: any day-position value above 12 proves which way round it is,
- * and a statement covering a month almost always contains one.
- */
-export function detectDateOrder(values: string[]): 'dmy' | 'mdy' {
-  let firstOver12 = false;
-  let secondOver12 = false;
-  for (const value of values) {
-    const m = /^(\d{1,2})[/-](\d{1,2})[/-](\d{2}|\d{4})$/.exec(value.trim());
-    if (!m) continue;
-    if (Number(m[1]) > 12) firstOver12 = true;
-    if (Number(m[2]) > 12) secondOver12 = true;
-  }
-  if (firstOver12 && !secondOver12) return 'dmy';
-  if (secondOver12 && !firstOver12) return 'mdy';
-  // Nothing in the file settles it; a statement is dd/mm/yyyy by default.
-  return 'dmy';
-}
-
-const MONTHS = 'jan feb mar apr may jun jul aug sep oct nov dec'.split(' ');
-
-/** A statement date in any of the shapes a bank prints, as ISO. */
-export function parseStatementDate(value: string, order: 'dmy' | 'mdy' = 'dmy'): string | null {
-  const trimmed = value?.trim();
-  if (!trimmed) return null;
-
-  const iso = /^(\d{4})-(\d{1,2})-(\d{1,2})$/.exec(trimmed);
-  if (iso) return toIso(Number(iso[1]), Number(iso[2]), Number(iso[3]));
-
-  // 15-Mar-2026 and 15 Mar 2026, both common on Indian statements.
-  const named = /^(\d{1,2})[\s-]([A-Za-z]{3,})[\s-](\d{2}|\d{4})$/.exec(trimmed);
-  if (named) {
-    const month = MONTHS.indexOf(named[2].slice(0, 3).toLowerCase()) + 1;
-    if (month === 0) return null;
-    const year = Number(named[3]);
-    return toIso(year < 100 ? 2000 + year : year, month, Number(named[1]));
-  }
-
-  const numeric = /^(\d{1,2})[/-](\d{1,2})[/-](\d{2}|\d{4})$/.exec(trimmed);
-  if (numeric) {
-    const year = Number(numeric[3]);
-    const [day, month] =
-      order === 'dmy'
-        ? [Number(numeric[1]), Number(numeric[2])]
-        : [Number(numeric[2]), Number(numeric[1])];
-    return toIso(year < 100 ? 2000 + year : year, month, day);
-  }
-
-  return null;
-}
-
-function toIso(year: number, month: number, day: number): string | null {
-  if (month < 1 || month > 12 || day < 1 || day > 31) return null;
-  const date = new Date(Date.UTC(year, month - 1, day));
-  if (date.getUTCMonth() !== month - 1 || date.getUTCDate() !== day) return null;
-  return date.toISOString().slice(0, 10);
-}
+/** Re-exported: the bank adapters read their dates through here. */
+export { detectDateOrder, parseStatementDate } from './dates';
 
 export interface StatementParseResult {
   rows: ParsedRow[];

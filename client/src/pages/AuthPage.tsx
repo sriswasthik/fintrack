@@ -169,6 +169,17 @@ export function AuthPage({ mode }: { mode: 'login' | 'register' }) {
               }
             />
 
+            {mode === 'login' && (
+              <p className="-mt-2 text-right text-sm">
+                <Link
+                  to="/forgot-password"
+                  className="text-muted-foreground hover:text-foreground underline underline-offset-4"
+                >
+                  Forgot password?
+                </Link>
+              </p>
+            )}
+
             {error && (
               <p role="alert" className="text-destructive text-sm">
                 {error}

@@ -21,7 +21,7 @@ import { HttpError } from '../middleware/errorHandler';
 import {
   CsvMappingError,
   HEADER_PRESETS,
-  detectPreset,
+  detectMapping,
   inspectHeaders,
   parseTransactions,
   type ColumnMapping,
@@ -32,13 +32,22 @@ import { applyRuleEngine } from '../services/rules/apply';
 import { scopeToUser } from './user-scope';
 
 /** An explicit column mapping supplied by the client's mapping UI. */
-const columnMappingSchema = z.object({
-  date: z.string().min(1),
-  description: z.string().min(1),
-  amount: z.string().min(1),
-  postedDate: z.string().min(1).optional(),
-  amountSign: z.enum(['debit-positive', 'credit-positive']).default('debit-positive'),
-});
+const columnMappingSchema = z
+  .object({
+    date: z.string().min(1),
+    description: z.string().min(1),
+    /** One signed amount column, or the debit/credit pair below. */
+    amount: z.string().min(1).optional(),
+    debit: z.string().min(1).optional(),
+    credit: z.string().min(1).optional(),
+    drCr: z.string().min(1).optional(),
+    postedDate: z.string().min(1).optional(),
+    amountSign: z.enum(['debit-positive', 'credit-positive']).default('debit-positive'),
+    dateOrder: z.enum(['dmy', 'mdy']).optional(),
+  })
+  .refine((m) => m.amount || m.debit || m.credit, {
+    message: 'mapping needs an amount column, or debit and credit columns',
+  });
 
 const uploadBodySchema = z.object({
   accountId: z.string().min(1, 'accountId is required'),
@@ -127,8 +136,8 @@ export const uploadTransactions: RequestHandler = async (req, res) => {
   if (!csvText.trim()) throw new HttpError(400, 'The uploaded file is empty');
 
   const { headers, sampleRows } = inspectHeaders(csvText);
-  const preset = detectPreset(headers);
-  const resolved: ColumnMapping | undefined = mapping ?? preset?.mapping;
+  const detected = mapping ? null : detectMapping(headers);
+  const resolved: ColumnMapping | undefined = mapping ?? detected?.mapping;
 
   // Unknown layout and no mapping supplied: hand the headers back so the client
   // can put up a column-mapping UI and resubmit.
@@ -138,7 +147,7 @@ export const uploadTransactions: RequestHandler = async (req, res) => {
       fileName: req.file.originalname,
       headers,
       sampleRows,
-      requiredFields: ['date', 'description', 'amount'],
+      requiredFields: ['date', 'description', 'amount | debit + credit'],
       knownPresets: HEADER_PRESETS.map((p) => ({ id: p.id, label: p.label, columns: p.required })),
     });
     return;
@@ -183,9 +192,11 @@ export const uploadTransactions: RequestHandler = async (req, res) => {
     status: 'preview',
     fileName: req.file.originalname,
     accountId,
-    preset: mapping ? 'custom' : (preset?.id ?? null),
+    preset: mapping ? 'custom' : (detected?.id ?? null),
     headers,
     mapping: resolved,
+    /** How numeric dates were read, and whether the file proved it. */
+    dateOrder: parsed.dateOrder,
     totalRows: rows.length,
     duplicateCount: rows.filter((r) => r.duplicate).length,
     skippedRows: parsed.errors,
