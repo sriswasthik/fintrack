@@ -292,6 +292,8 @@ describe('narrations whose fields are joined by hyphens', () => {
     ['BY TRANSFER-NEFT*HDFC0000001*N064260012345*NORTHWIND LABS', 'NORTHWIND LABS'],
     ['ACH D- AXIS MF SIP-12345678', 'AXIS MF SIP'],
     ['NACH-DR- ICICI PRU LIFE-UMRN12345', 'ICICI PRU LIFE'],
+    // A card at a till: the card number goes, and so does the POS in front.
+    ['POS 416021XXXXXX1234 BIGBASKET', 'BIGBASKET'],
   ])('finds the counterparty in %s', (raw, expected) => {
     expect(normalizeMerchant(raw)).toBe(expected);
   });

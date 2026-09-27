@@ -136,6 +136,9 @@ const PAYMENT_RAILS = new Set([
   'VPS',
   'ATOM',
   'CMS',
+  // A card swiped at a till: "POS 416021XXXXXX1234 BIGBASKET". The card number
+  // is a reference and goes in step 3, which leaves POS where the brand should be.
+  'POS',
 ]);
 
 /**
