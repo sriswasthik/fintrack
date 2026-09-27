@@ -4,6 +4,8 @@ interface ApiErrorBody {
   error?: string;
   /** Zod issues, when the server rejected the request shape. */
   details?: { message?: string }[];
+  /** On an unexpected server error: the ID its log line is filed under. */
+  requestId?: string;
 }
 
 /** The API's error body, from anything shaped like a failed HTTP response. */
@@ -30,7 +32,13 @@ export function errorMessage(error: unknown, fallback = 'Something went wrong'):
   const body = apiBody(error);
   if (body) {
     if (Array.isArray(body.details) && body.details[0]?.message) return body.details[0].message;
-    if (typeof body.error === 'string') return body.error;
+    if (typeof body.error === 'string') {
+      // An unexpected failure says nothing useful by itself; its reference is
+      // what lets whoever runs the server find what happened.
+      return typeof body.requestId === 'string'
+        ? `${body.error} (reference ${body.requestId.slice(0, 8)})`
+        : body.error;
+    }
   }
 
   if (axios.isAxiosError(error) && !error.response) {

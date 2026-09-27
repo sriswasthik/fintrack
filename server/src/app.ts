@@ -5,6 +5,7 @@ import helmet from 'helmet';
 
 import { authConfigurationHandler, requireAuth, requireWritableSession } from './middleware/auth';
 import { errorHandler, notFoundHandler } from './middleware/errorHandler';
+import { requestContext } from './middleware/requestLog';
 import { accountsRouter } from './routes/accounts';
 import { authRouter } from './routes/auth';
 import { budgetsRouter } from './routes/budgets';
@@ -56,6 +57,9 @@ export function createApp() {
 
   app.set('trust proxy', trustProxySetting());
 
+  // First, so every request — including one that fails in the middleware
+  // below — has an ID and a log line.
+  app.use(requestContext);
   app.use(helmet());
   app.use(
     cors({

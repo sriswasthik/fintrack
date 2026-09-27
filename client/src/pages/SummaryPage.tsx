@@ -20,6 +20,7 @@ import {
   type MonthlyStats,
   type MonthlySummary,
 } from '@/lib/summary';
+import { errorMessage } from '@/lib/errors';
 
 const signedPercent = (n: number) => `${n > 0 ? '+' : ''}${n}%`;
 
@@ -38,14 +39,6 @@ function shiftMonth(month: string, by: number): string {
 }
 
 const thisMonth = () => new Date().toISOString().slice(0, 7);
-
-function errorMessage(error: unknown): string {
-  if (typeof error === 'object' && error !== null && 'response' in error) {
-    const data = (error as { response?: { data?: { error?: string } } }).response?.data;
-    if (data?.error) return data.error;
-  }
-  return error instanceof Error ? error.message : 'Something went wrong';
-}
 
 /**
  * The figures the paragraph is written from, laid out so a reader can check the

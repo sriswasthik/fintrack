@@ -27,6 +27,7 @@ import {
   type SplitInput,
   type Transaction,
 } from '@/lib/transactions';
+import { errorMessage } from '@/lib/errors';
 
 /** Amounts are compared in whole cents, exactly as the server does. */
 const cents = (amount: number) => Math.round(amount * 100);
@@ -36,14 +37,6 @@ interface DraftPart {
   /** Kept as a string so a half-typed "12." does not get coerced away. */
   amount: string;
   note: string;
-}
-
-function errorMessage(error: unknown): string {
-  if (typeof error === 'object' && error !== null && 'response' in error) {
-    const data = (error as { response?: { data?: { error?: string } } }).response?.data;
-    if (data?.error) return data.error;
-  }
-  return error instanceof Error ? error.message : 'Something went wrong';
 }
 
 /**

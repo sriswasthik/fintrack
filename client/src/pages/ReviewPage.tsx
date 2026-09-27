@@ -28,14 +28,7 @@ import {
   type Category,
   type Transaction,
 } from '@/lib/transactions';
-
-function errorMessage(error: unknown): string {
-  if (typeof error === 'object' && error !== null && 'response' in error) {
-    const data = (error as { response?: { data?: { error?: string } } }).response?.data;
-    if (data?.error) return data.error;
-  }
-  return error instanceof Error ? error.message : 'Something went wrong';
-}
+import { errorMessage } from '@/lib/errors';
 
 /**
  * The review queue: everything no automated pass could settle confidently.

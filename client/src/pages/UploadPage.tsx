@@ -46,20 +46,13 @@ import {
   type BatchPreview,
   type StatementPeriod,
 } from '@/lib/statements';
+import { errorMessage } from '@/lib/errors';
 
 const PREVIEW_LIMIT = 20;
 
 /** Chosen by extension rather than MIME type, which browsers disagree about. */
 function isPdf(file: File): boolean {
   return /\.pdf$/i.test(file.name) || file.type === 'application/pdf';
-}
-
-function errorMessage(error: unknown): string {
-  if (typeof error === 'object' && error !== null && 'response' in error) {
-    const response = (error as { response?: { data?: { error?: string } } }).response;
-    if (response?.data?.error) return response.data.error;
-  }
-  return error instanceof Error ? error.message : 'Something went wrong';
 }
 
 export function UploadPage() {

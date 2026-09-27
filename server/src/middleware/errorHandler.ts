@@ -9,6 +9,7 @@ import type { ErrorRequestHandler, RequestHandler } from 'express';
 import { MulterError } from 'multer';
 import { ZodError } from 'zod';
 
+import { log } from './requestLog';
 import { MAX_PDF_BYTES, MAX_UPLOAD_BYTES, UnsupportedFileTypeError } from './upload';
 
 export class HttpError extends Error {
@@ -62,6 +63,15 @@ export const errorHandler: ErrorRequestHandler = (error, req, res, _next) => {
     return;
   }
 
-  console.error(error);
-  res.status(500).json({ error: 'Internal server error' });
+  // The stack goes to the log under the request's ID; the caller gets the ID
+  // alone, which is enough to find it and says nothing about the internals.
+  log('error', 'unhandled error', {
+    requestId: req.requestId,
+    method: req.method,
+    path: req.originalUrl.split('?')[0],
+    userId: req.userId,
+    error: error instanceof Error ? error.message : String(error),
+    stack: error instanceof Error ? error.stack : undefined,
+  });
+  res.status(500).json({ error: 'Internal server error', requestId: req.requestId });
 };

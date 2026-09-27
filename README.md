@@ -259,6 +259,26 @@ Then open the client URL: the landing page reports whether it can reach the API,
 which is the fastest way to tell a CORS or `VITE_API_BASE_URL` mistake from a
 broken build.
 
+### Before you store real statements
+
+- **No `[config]` warnings** in the startup log, or only ones you have decided
+  to accept.
+- **`DEMO_MODE` is off.** A demo belongs on its own instance and database.
+- **Email works.** Request a password reset for your own address and follow the
+  link. Without a mail provider, nobody who forgets a password can get back in.
+- **You have decided what may reach Anthropic.** `AI_CATEGORIZATION` sends
+  merchant names; `AI_STATEMENT_READER` sends the transaction rows of a PDF no
+  built-in reader knows, with identifiers masked. Either can be `off`.
+- **Backups are on, and you have restored one.** They are a setting of the
+  database host, not of this app: check that your Neon or Supabase plan keeps
+  backups or point-in-time restore for long enough, then restore into a scratch
+  database once, so the first restore is not the one that matters.
+- **You know where the logs are.** Every request is logged with an ID, and an
+  unexpected error shows the person a short reference, e.g.
+  `(reference 3f9c2a1b)`. Searching the platform's logs for it finds the
+  request and the stack trace. Query strings and request bodies are never
+  logged.
+
 ## Environment variables
 
 Copy the `.env.example` files and fill them in — never commit a real `.env`.
