@@ -265,3 +265,53 @@ describe('Indian payment-rail narrations (Phase 14)', () => {
     expect(normalizeMerchant('ATOM')).toBe('ATOM');
   });
 });
+
+describe('narrations whose fields are joined by hyphens', () => {
+  // How HDFC, ICICI and SBI actually print rail lines. Every name, number, IFSC
+  // and address below is invented.
+  it.each([
+    // NEFT and RTGS credits name the remitter first; the account holder follows.
+    [
+      'NEFT CR-CITI0100000-NORTHWIND LABS PVT LTD-A SAMPLE PERSON-CITIN52026030112345',
+      'NORTHWIND LABS PVT LTD',
+    ],
+    ['NEFT CR-123456789012-NORTHWIND LABS', 'NORTHWIND LABS'],
+    [
+      'RTGS CR-SBIN0000001-ACME EXPORTS PVT LTD-A SAMPLE PERSON-SBINR52026030100012345',
+      'ACME EXPORTS PVT LTD',
+    ],
+    ['NEFT DR-HDFC0001234-RAMESH KUMAR-NETBANK, MUM-N064260012345-RENT', 'RAMESH KUMAR'],
+    ['IMPS-606012345678-RAMESH KUMAR-HDFC-XXXXXXXX1234-RENT', 'RAMESH KUMAR'],
+    ['IMPS/P2A/606012345678/RAMESH KUMAR/HDFC BANK/RENT', 'RAMESH KUMAR'],
+    ['UPI-SWIGGY-SWIGGY@ICICI-ICIC0000001-606012345678-PAYMENT', 'SWIGGY'],
+    ['UPI-9876543210@YBL-RAMESH KUMAR', 'RAMESH KUMAR'],
+    ['UPI-RAMESH KUMAR-9876543210@YBL-SBIN0001234-606012345678-RENT', 'RAMESH KUMAR'],
+    ['UPI/DR/606012345678/ZOMATO LTD/YESB/zomato@ybl/Payment', 'ZOMATO LTD'],
+    // SBI puts its own words in front of the rail.
+    ['TO TRANSFER-UPI/DR/606112345678/ZOMATO/YESB/zomato@ybl/UPI', 'ZOMATO'],
+    ['BY TRANSFER-NEFT*HDFC0000001*N064260012345*NORTHWIND LABS', 'NORTHWIND LABS'],
+    ['ACH D- AXIS MF SIP-12345678', 'AXIS MF SIP'],
+    ['NACH-DR- ICICI PRU LIFE-UMRN12345', 'ICICI PRU LIFE'],
+  ])('finds the counterparty in %s', (raw, expected) => {
+    expect(normalizeMerchant(raw)).toBe(expected);
+  });
+
+  it('gives every salary credit from one employer the same key', () => {
+    // The reason this matters: with the reference left in, each month's salary
+    // was a different merchant to every rule, the AI cache and the payee ledger.
+    const keys = [
+      'NEFT CR-CITI0100000-NORTHWIND LABS-A SAMPLE PERSON-CITIN52026013112345',
+      'NEFT CR-CITI0100000-NORTHWIND LABS-A SAMPLE PERSON-CITIN52026022812345',
+    ].map(normalizeMerchant);
+    expect(new Set(keys)).toEqual(new Set(['NORTHWIND LABS']));
+  });
+
+  it('keeps the hyphen in a name that is not a rail narration', () => {
+    expect(normalizeMerchant('COCA-COLA BOTTLING')).toBe('COCA-COLA BOTTLING');
+    expect(normalizeMerchant('7-ELEVEN #1234')).toBe('7-ELEVEN');
+  });
+
+  it('falls back to the words when no field is a name', () => {
+    expect(normalizeMerchant('UPI-606012345678')).toBe('UPI');
+  });
+});
