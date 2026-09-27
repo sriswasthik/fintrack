@@ -41,6 +41,10 @@ the number of transactions.
   spikes, subscription price rises, newly-appearing recurring charges.
 - **Writes a recap** in plain English from the computed figures only.
 
+The complete project documentation — features, architecture, API, data model,
+security, design system, verification and history — is in
+[docs/PROJECT_DOCUMENTATION.md](./docs/PROJECT_DOCUMENTATION.md).
+
 Measured results are in [RESULTS.md](./RESULTS.md); the full report behind them
 is [docs/ACCURACY_REPORT.md](./docs/ACCURACY_REPORT.md), and the edge cases each
 have a named test in [docs/EDGE_CASES.md](./docs/EDGE_CASES.md).
