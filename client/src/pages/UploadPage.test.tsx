@@ -219,6 +219,27 @@ describe('UploadPage', () => {
     expect(screen.getByText(/Imported 2 transaction\(s\), skipped 1\./)).toBeInTheDocument();
   });
 
+  it('says when salary credits were recognised as income', async () => {
+    commitImportMock.mockResolvedValue({
+      accountId: 'acct_1',
+      imported: 6,
+      skipped: 0,
+      categorization: { uncategorized: 0 },
+      salary: { payers: ['NORTHWIND LABS'], categorized: 3 },
+      ai: { status: 'off' },
+    });
+
+    const user = userEvent.setup();
+    renderPage();
+    await chooseAccountAndFile(user);
+    await user.click(screen.getByRole('button', { name: 'Upload' }));
+    await user.click(await screen.findByRole('button', { name: 'Confirm Import' }));
+
+    expect(
+      await screen.findByText('Recognised 3 salary credit(s) from NORTHWIND LABS as income.'),
+    ).toBeInTheDocument();
+  });
+
   it('says what the AI categorized and what is left for review', async () => {
     commitImportMock.mockResolvedValue({
       accountId: 'acct_1',

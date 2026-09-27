@@ -12,6 +12,7 @@ import { z } from 'zod';
 
 import { getPrisma } from '../db';
 import { runLlmPass } from '../services/ai/apply';
+import { categorizeSalaryCredits } from '../services/india/salaryIncome';
 import {
   AnthropicMerchantCategorizer,
   LOW_CONFIDENCE_THRESHOLD,
@@ -119,8 +120,9 @@ export function setMerchantCategorizer(next: MerchantCategorizer | undefined): v
 }
 
 /**
- * Everything that runs after rows land: the deterministic rules, then the
- * model for what they left, then the payee ledger.
+ * Everything that runs after rows land: the deterministic rules, then salary
+ * credits recognised by their monthly pattern, then the model for what is
+ * left, then the payee ledger.
  *
  * The order is load-bearing. The model only ever sees what no rule settled
  * (PROJECT_CONTEXT.md §4), and payees are resolved last because which lines
@@ -131,9 +133,12 @@ export function setMerchantCategorizer(next: MerchantCategorizer | undefined): v
 async function categorizeForUser(userId: string) {
   const prisma = getPrisma();
   const categorization = await applyRuleEngine(prisma, { userId });
+  // Before the model: a salary is recognised by its pattern, deterministically,
+  // and an employer's name is exactly what the model could only guess at.
+  const salary = await categorizeSalaryCredits(prisma, { userId });
   const ai = await runLlmPass(prisma, { userId, categorizer: getCategorizer() });
   const payees = await resolvePayees(prisma, { userId });
-  return { categorization, ai, payees };
+  return { categorization, salary, ai, payees };
 }
 
 /**
@@ -298,7 +303,7 @@ export const commitTransactions: RequestHandler = async (req, res) => {
     });
   }
 
-  const { categorization, ai, payees } = await categorizeForUser(userId);
+  const { categorization, salary, ai, payees } = await categorizeForUser(userId);
 
   res.status(201).json({
     accountId,
@@ -306,6 +311,7 @@ export const commitTransactions: RequestHandler = async (req, res) => {
     imported: toImport.length,
     skipped: skipped.length,
     categorization,
+    salary,
     ai,
     payees,
   });
@@ -636,9 +642,9 @@ export const categorizeTransactions: RequestHandler = async (req, res) => {
   const { accountId } = z.object({ accountId: z.string().min(1) }).parse(req.body);
   await requireAccount(userId, accountId);
 
-  const { categorization, ai, payees } = await categorizeForUser(userId);
+  const { categorization, salary, ai, payees } = await categorizeForUser(userId);
 
-  res.json({ ...categorization, ai, payees });
+  res.json({ ...categorization, salary, ai, payees });
 };
 
 const reviewQueueQuerySchema = z.object({

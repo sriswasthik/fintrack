@@ -663,6 +663,11 @@ function CategorizationOutcome({ result }: { result: CommitResult }) {
   const left = ai?.status === 'done' ? ai.stillUnresolved : (categorization?.uncategorized ?? 0);
 
   const parts: string[] = [];
+  if (result.salary && result.salary.categorized > 0) {
+    parts.push(
+      `Recognised ${result.salary.categorized} salary credit(s) from ${result.salary.payers.join(', ')} as income.`,
+    );
+  }
   if (ai?.status === 'done' && ai.categorized > 0) {
     parts.push(
       `AI categorized ${ai.categorized} transaction(s) the rules could not` +

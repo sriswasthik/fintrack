@@ -107,6 +107,8 @@ export interface CommitResult {
   skipped: number;
   /** The rule engine's pass, over all of the user's transactions. */
   categorization?: { uncategorized: number };
+  /** Salary credits recognised by their monthly pattern and filed as income. */
+  salary?: { payers: string[]; categorized: number };
   ai?: AiPassResult;
 }
 
