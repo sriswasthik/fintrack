@@ -19,6 +19,7 @@ import { z } from 'zod';
 import { getPrisma } from '../db';
 import { currentUserId } from '../middleware/auth';
 import { HttpError } from '../middleware/errorHandler';
+import { redactStatementText } from '../services/ai/redact';
 import {
   AnthropicStatementReader,
   StatementReaderConfigurationError,
@@ -44,6 +45,17 @@ import {
   UnreadablePdfError,
 } from '../services/parsing/pdf';
 import { groupIntoLines, parseGenericStatement, toPlainText } from '../services/parsing/statement';
+import {
+  detectMapping,
+  inspectHeaders,
+  parseTransactions,
+  type ParsedRow,
+} from '../services/parsing/csv';
+import {
+  isSpreadsheet,
+  tableToCsv,
+  UnreadableSpreadsheetError,
+} from '../services/parsing/spreadsheet';
 
 const parseBodySchema = z.object({
   accountId: z.string().min(1, 'accountId is required'),
@@ -165,8 +177,25 @@ async function readStatement(buffer: Buffer, password: string | undefined): Prom
     );
   }
 
+  if (process.env.AI_STATEMENT_READER === 'off') {
+    throw new HttpError(
+      422,
+      "This statement's layout is not one we read directly, and reading it with AI is switched off on this server.",
+      { reason: 'unsupported-layout' },
+    );
+  }
+
+  // Only the transaction table goes to the model, with identifiers masked —
+  // never the name, address and account number above it (services/ai/redact.ts).
+  const { text: forModel } = redactStatementText(rawText);
+  if (!forModel) {
+    throw new HttpError(422, 'No transactions could be found in this statement.', {
+      reason: 'unreadable-layout',
+    });
+  }
+
   try {
-    const read = await getReader().read(rawText);
+    const read = await getReader().read(forModel);
     return {
       rows: read.rows,
       errors: read.errors,
@@ -193,6 +222,51 @@ async function readStatement(buffer: Buffer, password: string | undefined): Prom
     }
     throw error;
   }
+}
+
+/** A PDF says so in its first bytes, whatever it is called. */
+function isPdfFile(buffer: Buffer, fileName: string): boolean {
+  return buffer.subarray(0, 5).toString('latin1') === '%PDF-' || /\.pdf$/i.test(fileName);
+}
+
+/**
+ * Reads a CSV or Excel export in a batch, through the same path a single one
+ * takes — with one difference: a single upload whose columns are not
+ * recognised asks the person to map them, and a batch has nowhere to ask. That
+ * file comes back as failed, saying so, and the rest of the batch goes on.
+ */
+function readTable(buffer: Buffer, fileName: string) {
+  let csvText: string;
+  try {
+    csvText = tableToCsv(buffer, fileName);
+  } catch (error) {
+    if (error instanceof UnreadableSpreadsheetError) {
+      throw new HttpError(422, error.message, { reason: 'unreadable-table' });
+    }
+    throw error;
+  }
+
+  const detected = detectMapping(inspectHeaders(csvText).headers);
+  if (!detected) {
+    throw new HttpError(
+      422,
+      'Its columns were not recognised. Import this file on its own to map them.',
+      { reason: 'needs-mapping' },
+    );
+  }
+
+  const parsed = parseTransactions(csvText, detected.mapping);
+  const kind = isSpreadsheet(buffer, fileName) ? 'Excel' : 'CSV';
+  return {
+    rows: parsed.rows,
+    errors: parsed.errors,
+    sourceLabel: `${kind} — ${detected.label}`,
+    // The batch preview has no per-file switch to flip, so it says the guess out loud.
+    note:
+      parsed.dateOrder.basis === 'default'
+        ? 'Dates were read day first (03/05 is 3 May); nothing in the file proved it either way.'
+        : undefined,
+  };
 }
 
 /** Turns a PDF-reading failure into the response the client can act on. */
@@ -331,7 +405,8 @@ interface BatchFile {
   status: FileStatus;
   source: SourceId | null;
   sourceLabel: string | null;
-  via: 'adapter' | 'layout' | 'model' | null;
+  /** How it was read: a PDF reader, or 'table' for a CSV or Excel export. */
+  via: 'adapter' | 'layout' | 'model' | 'table' | null;
   rowCount: number;
   skippedRows: { index: number; reason: string; values: Record<string, string> }[];
   /** Set when the file did not parse. */
@@ -363,7 +438,8 @@ interface BatchRow extends FlaggedRow {
 export const parseStatementBatch: RequestHandler = async (req, res) => {
   const userId = currentUserId(req);
   const files = (req.files as Express.Multer.File[] | undefined) ?? [];
-  if (files.length === 0) throw new HttpError(400, 'Expected at least one PDF in the "files" field');
+  if (files.length === 0)
+    throw new HttpError(400, 'Expected at least one statement in the "files" field');
 
   const { accountId, passwords } = batchBodySchema.parse(req.body);
   await requireAccount(userId, accountId);
@@ -389,7 +465,16 @@ export const parseStatementBatch: RequestHandler = async (req, res) => {
     }
 
     try {
-      const read = await readStatement(file.buffer, passwords[String(index)]);
+      const read: {
+        rows: (ParsedRow & { counterpartyRaw?: string | null; upiVpa?: string | null })[];
+        errors: BatchFile['skippedRows'];
+        source: SourceId;
+        sourceLabel: string;
+        via: NonNullable<BatchFile['via']>;
+        note?: string;
+      } = isPdfFile(file.buffer, fileName)
+        ? await readStatement(file.buffer, passwords[String(index)])
+        : { ...readTable(file.buffer, fileName), source: 'unknown', via: 'table' };
       summaries.push({
         ...base,
         status: 'parsed',
@@ -398,6 +483,7 @@ export const parseStatementBatch: RequestHandler = async (req, res) => {
         via: read.via,
         rowCount: read.rows.length,
         skippedRows: read.errors,
+        ...(read.note ? { message: read.note } : {}),
       });
 
       for (const row of read.rows) {
@@ -456,7 +542,7 @@ export const parseStatementBatch: RequestHandler = async (req, res) => {
     totalRows: flagged.length,
     duplicateCount: flagged.filter((r) => r.duplicate).length,
     crossFileDuplicateCount: flagged.filter(
-      (r) => r.duplicate?.kind === 'in-file' && /in .+\.pdf$/i.test(r.duplicate.reason),
+      (r) => r.duplicate?.kind === 'in-file' && r.duplicate.reason.includes('as a row in '),
     ).length,
     rows: flagged,
   });

@@ -1,9 +1,19 @@
 import { Router } from 'express';
 
-import { demoSession, googleSignIn, login, logout, me, refresh, register } from '../controllers/auth';
+import {
+  demoSession,
+  googleSignIn,
+  login,
+  logout,
+  me,
+  refresh,
+  register,
+  forgotPassword,
+  resetPassword,
+} from '../controllers/auth';
 import { requireAuth } from '../middleware/auth';
 import { asyncHandler } from '../middleware/errorHandler';
-import { authLimiter, refreshLimiter } from '../middleware/rateLimit';
+import { authLimiter, passwordResetLimiter, refreshLimiter } from '../middleware/rateLimit';
 
 export const authRouter = Router();
 
@@ -16,4 +26,10 @@ authRouter.post('/auth/google', authLimiter, asyncHandler(googleSignIn));
 authRouter.post('/auth/refresh', refreshLimiter, asyncHandler(refresh));
 authRouter.post('/auth/demo', authLimiter, asyncHandler(demoSession));
 authRouter.post('/auth/logout', asyncHandler(logout));
+// Every request counts here, not just failures: a request always "succeeds",
+// and each one can send an email.
+authRouter.post('/auth/forgot-password', passwordResetLimiter, asyncHandler(forgotPassword));
+// A wrong or spent token is a failure and counts against the same budget as a
+// wrong password.
+authRouter.post('/auth/reset-password', authLimiter, asyncHandler(resetPassword));
 authRouter.get('/auth/me', requireAuth, asyncHandler(me));

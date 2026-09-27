@@ -115,7 +115,10 @@ export async function resolvePayees(
         match.upiVpa = counterparty.upiVpa;
         match.phone = counterparty.phone;
         byVpa.set(counterparty.upiVpa, match);
-        enrich.set(match.id, { upiVpa: counterparty.upiVpa, ...(counterparty.phone ? { phone: counterparty.phone } : {}) });
+        enrich.set(match.id, {
+          upiVpa: counterparty.upiVpa,
+          ...(counterparty.phone ? { phone: counterparty.phone } : {}),
+        });
       }
       if (transaction.payeeId !== match.id) links.set(transaction.id, match.id);
       continue;

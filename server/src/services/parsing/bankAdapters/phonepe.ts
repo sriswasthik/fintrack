@@ -39,7 +39,8 @@ export const phonePeAdapter: BankAdapter = {
     const text = rawText.toLowerCase();
     const isApp = text.includes('phonepe') || text.includes('transaction statement');
     // The block shape, not just the brand: a PhonePe receipt is also "PhonePe".
-    const hasBlocks = /\b(paid to|received from)\b/i.test(rawText) && /\btransaction id\b/i.test(text);
+    const hasBlocks =
+      /\b(paid to|received from)\b/i.test(rawText) && /\btransaction id\b/i.test(text);
     return isApp && hasBlocks;
   },
 
@@ -72,7 +73,9 @@ export const phonePeAdapter: BankAdapter = {
           postedDate: date,
           // The description keeps the app's own wording, so the review queue
           // shows what the person would recognise from their phone.
-          description: transactionId ? `${direction} ${name} (${transactionId})` : `${direction} ${name}`,
+          description: transactionId
+            ? `${direction} ${name} (${transactionId})`
+            : `${direction} ${name}`,
           amount: incoming ? -Math.abs(amount) : Math.abs(amount),
           // The key comes from who was paid, not from the sentence saying so.
           merchantFrom: name,

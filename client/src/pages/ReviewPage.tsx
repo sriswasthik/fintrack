@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { Link } from 'react-router-dom';
 
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -27,14 +28,7 @@ import {
   type Category,
   type Transaction,
 } from '@/lib/transactions';
-
-function errorMessage(error: unknown): string {
-  if (typeof error === 'object' && error !== null && 'response' in error) {
-    const data = (error as { response?: { data?: { error?: string } } }).response?.data;
-    if (data?.error) return data.error;
-  }
-  return error instanceof Error ? error.message : 'Something went wrong';
-}
+import { errorMessage } from '@/lib/errors';
 
 /**
  * The review queue: everything no automated pass could settle confidently.
@@ -69,12 +63,17 @@ export function ReviewPage() {
   const pendingId = mutation.isPending ? mutation.variables?.transactionId : null;
 
   return (
-    <main className="mx-auto flex max-w-5xl flex-col gap-6 p-6">
+    <main className="mx-auto flex max-w-6xl flex-col gap-6 p-4 sm:p-6">
       <div className="space-y-1">
-        <h1 className="text-2xl font-semibold tracking-tight">Review queue</h1>
+        <h1 className="font-display text-3xl font-semibold tracking-tight">Review queue</h1>
         <p className="text-muted-foreground text-sm">
           Transactions nothing could categorize with confidence. Accepting or correcting one teaches
-          a rule, so the same merchant is never asked about again.
+          a rule, so the same merchant is never asked about again. Every rule taught so far is on
+          the{' '}
+          <Link to="/rules" className="text-foreground underline underline-offset-4">
+            learned rules
+          </Link>{' '}
+          page, where it can be changed or forgotten.
         </p>
       </div>
 

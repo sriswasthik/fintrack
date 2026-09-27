@@ -4,12 +4,9 @@ import { classifyCounterparty } from './counterparty';
 import { COUNTERPARTY_SAMPLE } from './counterparty-sample';
 
 describe('the labeled sample', () => {
-  it.each(COUNTERPARTY_SAMPLE)(
-    '$note',
-    ({ expected, note: _note, ...input }) => {
-      expect(classifyCounterparty(input).type).toBe(expected);
-    },
-  );
+  it.each(COUNTERPARTY_SAMPLE)('$note', ({ expected, note: _note, ...input }) => {
+    expect(classifyCounterparty(input).type).toBe(expected);
+  });
 
   it('is correct on every row of the sample', () => {
     const wrong = COUNTERPARTY_SAMPLE.filter(

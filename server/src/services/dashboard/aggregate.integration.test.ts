@@ -151,8 +151,28 @@ const ROWS: Row[] = [
   },
 ];
 
+// Not yet categorized: a purchase, which is spending whatever it turns out to
+// be, and a salary credit naming only the employer, which is not spending at
+// all — netting it would have made the month's spend negative.
+ROWS.push(
+  {
+    day: 20,
+    description: 'TST* THE ADDA - INDIRANAGAR',
+    merchant: 'THE ADDA',
+    amount: 250,
+    category: 'UNCATEGORIZED',
+  },
+  {
+    day: 21,
+    description: 'NEFT CR-CITI0100000-NORTHWIND LABS-A SAMPLE PERSON',
+    merchant: 'NORTHWIND LABS',
+    amount: -50000,
+    category: 'UNCATEGORIZED',
+  },
+);
+
 /** Spend the dashboard should report: purchases only, no transfers, refund netted. */
-const EXPECTED_SPEND = 100 + 40 + 60 + (200 - 80) + 300 + 120 + 3.6;
+const EXPECTED_SPEND = 100 + 40 + 60 + (200 - 80) + 300 + 120 + 3.6 + 250;
 const EXPECTED_INCOME = 3000 + 450;
 
 let prisma: PrismaClient;
@@ -304,7 +324,7 @@ describe.skipIf(!hasDatabase)('aggregateDashboard against a real database', () =
   });
 
   it('counts each transaction once, splits and refunds included', () => {
-    // 15 rows in, and every one of them accounted for exactly once.
+    // Every row in, and every one of them accounted for exactly once.
     expect(result.totals.transactions).toBe(ROWS.length);
   });
 
@@ -313,6 +333,15 @@ describe.skipIf(!hasDatabase)('aggregateDashboard against a real database', () =
       .filter((row) => row.category !== 'INCOME')
       .reduce((sum, row) => sum + row.amount, 0);
     expect(fromCategories).toBeCloseTo(result.totals.spend, 2);
+  });
+
+  it('keeps uncategorized money in out of spend, and reports it on its own', () => {
+    expect(result.totals.unreviewedIn).toBeCloseTo(50000, 2);
+    // The uncategorized purchase is still spending...
+    expect(amountFor('UNCATEGORIZED')).toBeCloseTo(250, 2);
+    // ...and the credit is neither spending nor income until someone says so.
+    expect(result.totals.income).toBeCloseTo(EXPECTED_INCOME, 2);
+    expect(result.totals.spend).toBeGreaterThan(0);
   });
 
   it('ranks merchants by what was actually spent at them', () => {

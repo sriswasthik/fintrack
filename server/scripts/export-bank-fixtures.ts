@@ -57,7 +57,10 @@ const ref = (t: GeneratedTransaction, prefix = 'S') => `${prefix}${String(t.row)
 
 /** A VPA for a counterparty, in the shape a UPI app prints. */
 function vpa(merchant: string): string {
-  const handle = merchant.toLowerCase().replace(/[^a-z0-9]+/g, '').slice(0, 14);
+  const handle = merchant
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '')
+    .slice(0, 14);
   const banks = ['ybl', 'okaxis', 'paytm', 'oksbi', 'ibl'];
   // Deterministic: the same merchant always gets the same handle.
   const bank = banks[merchant.length % banks.length];
@@ -84,7 +87,9 @@ function buildTable(layout: TableLayout, rows: GeneratedTransaction[]): Promise<
   const doc = new PDFDocument({ size: 'A4', margin: 40, info: { Title: layout.title } });
   const chunks: Buffer[] = [];
   doc.on('data', (chunk: Buffer) => chunks.push(chunk));
-  const done = new Promise<Buffer>((resolve) => doc.on('end', () => resolve(Buffer.concat(chunks))));
+  const done = new Promise<Buffer>((resolve) =>
+    doc.on('end', () => resolve(Buffer.concat(chunks))),
+  );
 
   let balance = 250000;
 
@@ -241,17 +246,16 @@ function buildPhonePe(rows: GeneratedTransaction[]): Promise<Buffer> {
   const doc = new PDFDocument({ size: 'A4', margin: 40, info: { Title: 'PhonePe Statement' } });
   const chunks: Buffer[] = [];
   doc.on('data', (chunk: Buffer) => chunks.push(chunk));
-  const done = new Promise<Buffer>((resolve) => doc.on('end', () => resolve(Buffer.concat(chunks))));
+  const done = new Promise<Buffer>((resolve) =>
+    doc.on('end', () => resolve(Buffer.concat(chunks))),
+  );
 
   const header = () => {
     doc.font('Helvetica-Bold').fontSize(14).text('PhonePe', 40, 40);
     doc.font('Helvetica').fontSize(9).text('Transaction Statement', 40, 58);
     doc.fontSize(8).text('Mar 01, 2026 - Apr 30, 2026', 40, 72);
     doc.text('Phone: +91 XXXXX 43210', 40, 84);
-    doc
-      .moveTo(40, 100)
-      .lineTo(556, 100)
-      .stroke();
+    doc.moveTo(40, 100).lineTo(556, 100).stroke();
     return 110;
   };
 
@@ -321,7 +325,11 @@ async function main() {
   await write('statement_phonepe.pdf', buildPhonePe(phonePeRows), `${phonePeRows.length} rows`);
 
   const axisRows = dataset.slice(0, 40);
-  await write('statement_axis.pdf', buildTable(AXIS, axisRows), `${axisRows.length} rows (no adapter)`);
+  await write(
+    'statement_axis.pdf',
+    buildTable(AXIS, axisRows),
+    `${axisRows.length} rows (no adapter)`,
+  );
 
   // --- the quarterly batch ------------------------------------------------
   // May repeats the last three days of April, as a real statement often does.

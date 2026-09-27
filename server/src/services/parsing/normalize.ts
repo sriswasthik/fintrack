@@ -136,6 +136,9 @@ const PAYMENT_RAILS = new Set([
   'VPS',
   'ATOM',
   'CMS',
+  // A card swiped at a till: "POS 416021XXXXXX1234 BIGBASKET". The card number
+  // is a reference and goes in step 3, which leaves POS where the brand should be.
+  'POS',
 ]);
 
 /**
@@ -286,6 +289,13 @@ export function normalizeMerchant(raw: string): string {
     return bank ? `${bank} CARD PAYMENT` : 'CARD PAYMENT';
   }
 
+  // 0a. A narration built from rail fields: `NEFT CR-<IFSC>-<NAME>-<REF>`,
+  //     `IMPS-<REF>-<NAME>-<BANK>`, `UPI-<NAME>-<VPA>-<IFSC>-<REF>`. The
+  //     counterparty is one field among references, so it is picked out as a
+  //     field before anything below reads the line as words.
+  const fromFields = counterpartyField(value);
+  if (fromFields) value = fromFields;
+
   // 1. Split on the processor marker and decide which side is the merchant.
   const star = value.indexOf('*');
   if (star !== -1) {
@@ -368,6 +378,47 @@ export function normalizeMerchant(raw: string): string {
 
   const result = tokens.join(' ').trim();
   return lookupAlias(result) ?? applyPrefixRules(result);
+}
+
+/**
+ * A narration that opens with a payment rail and then separates its fields
+ * with `-`, `/` or `*` — which is how Indian banks write NEFT, IMPS, RTGS, UPI
+ * and NACH lines, sometimes behind SBI's `TO TRANSFER-` or `BY TRANSFER-`.
+ */
+const RAIL_NARRATION = new RegExp(
+  `^(?:(?:TO|BY)\\s+TRANSFER\\s*-\\s*)?((?:${[...PAYMENT_RAILS].join('|')})\\b.*[-/*].*)$`,
+);
+
+/**
+ * The counterparty field of a rail narration, or null when the line is not one.
+ *
+ * Splitting on `-` is only safe inside such a narration, where it is the field
+ * separator: elsewhere it belongs to names like COCA-COLA and 7-ELEVEN. Within
+ * one, every field that is not a name is dropped — the rail and its direction,
+ * reference numbers, IFSC codes, masked card and account numbers, UPI
+ * addresses — and the first field left is who the money went to or came from.
+ * For an incoming NEFT that is the remitter, which is the counterparty; the
+ * account holder's own name comes after it.
+ */
+function counterpartyField(value: string): string | null {
+  const match = RAIL_NARRATION.exec(value.trim());
+  if (!match) return null;
+
+  const fields = match[1]
+    .split(/\s*[-/*]\s*/)
+    .map((field) => field.trim())
+    .filter(Boolean);
+
+  const isName = (field: string) => {
+    const tokens = field.split(/\s+/);
+    if (tokens.every((t) => PAYMENT_RAILS.has(t) || RAIL_DIRECTIONS.has(t))) return false;
+    if (/^\d+$/.test(field) || isReferenceToken(field.replace(/\s+/g, ''))) return false;
+    return !isVpaToken(field);
+  };
+
+  // Nothing but rails and references: the rail word is all the line can be
+  // called, as for a bare "UPI".
+  return fields.find(isName) ?? fields[0].split(/\s+/)[0];
 }
 
 /** Strips the hyphens a rail marker trails, so `D-` reads as `D`. */

@@ -28,6 +28,8 @@ const db = vi.hoisted(() => ({
   payeeFindMany: vi.fn(),
   payeeCreate: vi.fn(),
   payeeUpdate: vi.fn(),
+  // Every commit records its rows as one import (Phase 20).
+  importBatchCreate: vi.fn(),
 }));
 
 const prismaMock = vi.hoisted(() => ({}) as Record<string, unknown>);
@@ -38,7 +40,11 @@ vi.mock('../db', () => ({
 
 // vi.mock is hoisted above these imports, so `app` already sees the mocked db.
 import { app } from '../app';
+import { setMerchantCategorizer } from '../controllers/transactions';
 import { authHeader } from '../test/auth';
+
+/** Stands in for the model, so no route test can reach the network. */
+const categorize = vi.hoisted(() => vi.fn());
 
 const ACCOUNT_ID = 'acct_checking';
 
@@ -62,6 +68,8 @@ function upload(csv: string, fields: Record<string, string> = {}) {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  categorize.mockResolvedValue([]);
+  setMerchantCategorizer({ categorize });
   db.accountFindUnique.mockResolvedValue({
     id: ACCOUNT_ID,
     name: 'Everyday Checking',
@@ -97,6 +105,7 @@ beforeEach(() => {
     Promise.resolve({ id: 'payee_new', ...data }),
   );
   db.payeeUpdate.mockResolvedValue({});
+  db.importBatchCreate.mockResolvedValue({ id: 'import_1' });
 
   Object.assign(prismaMock, {
     account: { findUnique: db.accountFindUnique, findFirst: db.accountFindFirst },
@@ -122,6 +131,7 @@ beforeEach(() => {
       create: db.payeeCreate,
       update: db.payeeUpdate,
     },
+    importBatch: { create: db.importBatchCreate },
     merchantCategoryCache: { upsert: db.cacheUpsert },
     categoryOverride: { create: db.overrideCreate },
     split: { deleteMany: db.splitDeleteMany, createMany: db.splitCreateMany },
@@ -202,7 +212,11 @@ describe('POST /api/transactions/upload', () => {
     expect(response.body.status).toBe('needs-mapping');
     expect(response.body.headers).toEqual(['Posted', 'Merchant Name', 'Debit']);
     expect(response.body.sampleRows).toHaveLength(2);
-    expect(response.body.requiredFields).toEqual(['date', 'description', 'amount']);
+    expect(response.body.requiredFields).toEqual([
+      'date',
+      'description',
+      'amount | debit + credit',
+    ]);
     expect(response.body.knownPresets.map((p: { id: string }) => p.id)).toEqual([
       'chase',
       'amex',
@@ -225,6 +239,93 @@ describe('POST /api/transactions/upload', () => {
     expect(response.body.status).toBe('preview');
     expect(response.body.preset).toBe('custom');
     expect(response.body.rows[0]).toMatchObject({ normalizedMerchant: 'ACME', amount: 10 });
+  });
+
+  it('reads an Indian bank export: header below the account details, debit/credit columns', async () => {
+    const hdfc = [
+      'HDFC BANK Ltd.,,,,,,',
+      'Account No : XXXXXXXX1234,,,,,,',
+      'Date,Narration,Chq./Ref.No.,Value Dt,Withdrawal Amt.,Deposit Amt.,Closing Balance',
+      '03/05/26,UPI-SWIGGY-SWIGGY@ICICI,0000606012345678,03/05/26,450.00,,52550.00',
+      '04/05/26,NEFT CR-NORTHWIND LABS SALARY,N064260012345,04/05/26,,85000.00,137550.00',
+    ].join('\n');
+
+    const response = await upload(hdfc).expect(200);
+
+    expect(response.body.status).toBe('preview');
+    expect(response.body.preset).toBe('debit-credit');
+    // Nothing in the file proves the order, so the preview says it assumed one.
+    expect(response.body.dateOrder).toEqual({ order: 'dmy', basis: 'default' });
+    expect(
+      response.body.rows.map((r: { date: string; amount: number }) => [r.date, r.amount]),
+    ).toEqual([
+      ['2026-05-03', 450],
+      ['2026-05-04', -85000],
+    ]);
+  });
+
+  it('reads an Excel statement through the same path as a CSV', async () => {
+    const XLSX = await import('xlsx');
+    const date = (iso: string) => ({
+      t: 'n',
+      v: Date.parse(`${iso}T00:00:00Z`) / 86_400_000 + 25569,
+      z: 'm/d/yy',
+    });
+    const book = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(
+      book,
+      XLSX.utils.aoa_to_sheet([
+        ['Account No : XXXXXXXX1234'],
+        ['Txn Date', 'Description', 'Debit', 'Credit', 'Balance'],
+        [date('2026-05-03'), 'UPI/ZOMATO', 325, null, 10675],
+        [date('2026-05-04'), 'NEFT SALARY', null, 50000, 60675],
+      ]),
+      'Statement',
+    );
+    const xlsx = XLSX.write(book, { type: 'buffer', bookType: 'xlsx' }) as Buffer;
+
+    const response = await request(app)
+      .post('/api/transactions/upload')
+      .set(authHeader())
+      .field('accountId', ACCOUNT_ID)
+      .attach('file', xlsx, 'statement.xlsx')
+      .expect(200);
+
+    expect(response.body.status).toBe('preview');
+    expect(response.body.preset).toBe('debit-credit');
+    expect(
+      response.body.rows.map((r: { date: string; amount: number }) => [r.date, r.amount]),
+    ).toEqual([
+      ['2026-05-03', 325],
+      ['2026-05-04', -50000],
+    ]);
+  });
+
+  it('says plainly when an Excel file cannot be read', async () => {
+    const response = await request(app)
+      .post('/api/transactions/upload')
+      .set(authHeader())
+      .field('accountId', ACCOUNT_ID)
+      .attach('file', Buffer.concat([Buffer.from('PK\x03\x04'), Buffer.alloc(64, 7)]), 'bad.xlsx')
+      .expect(400);
+
+    expect(response.body.error).toMatch(/could not be read as a spreadsheet/);
+  });
+
+  it('re-reads month-first when the mapping says so', async () => {
+    const csv = ['Date,Description,Amount', '03/05/2026,X CORP,1.00'].join('\n');
+
+    const response = await upload(csv, {
+      mapping: JSON.stringify({
+        date: 'Date',
+        description: 'Description',
+        amount: 'Amount',
+        dateOrder: 'mdy',
+      }),
+    }).expect(200);
+
+    expect(response.body.dateOrder).toEqual({ order: 'mdy', basis: 'mapping' });
+    expect(response.body.rows[0].date).toBe('2026-03-05');
   });
 
   it('detects a Chase export and flips its sign convention', async () => {
@@ -368,12 +469,18 @@ describe('POST /api/transactions/commit', () => {
       .send({ accountId: ACCOUNT_ID, rows, resolutions: {} })
       .expect(201);
 
-    expect(response.body).toMatchObject({ accountId: ACCOUNT_ID, imported: 2, skipped: 0 });
+    expect(response.body).toMatchObject({
+      accountId: ACCOUNT_ID,
+      importId: 'import_1',
+      imported: 2,
+      skipped: 0,
+    });
 
     const inserted = db.transactionCreateMany.mock.calls[0][0].data;
     expect(inserted).toHaveLength(2);
     expect(inserted[0]).toMatchObject({
       accountId: ACCOUNT_ID,
+      importBatchId: 'import_1',
       description: 'PAYTM*CHAI POINT',
       normalizedMerchant: 'CHAI POINT',
       amount: '5.25',
@@ -383,6 +490,35 @@ describe('POST /api/transactions/commit', () => {
     });
     expect(inserted[0].date.toISOString()).toBe('2026-03-01T00:00:00.000Z');
     expect(inserted[1].postedDate).toBeNull();
+  });
+
+  it('runs the AI pass after the rules and reports it', async () => {
+    process.env.AI_CATEGORIZATION = 'on';
+    try {
+      const response = await request(app)
+        .post('/api/transactions/commit')
+        .set(authHeader())
+        .send({ accountId: ACCOUNT_ID, rows, resolutions: {} })
+        .expect(201);
+
+      // The rule engine is mocked to leave nothing unresolved, so there is
+      // nothing for the model to be asked.
+      expect(response.body.ai).toMatchObject({ status: 'done', sentToModel: 0 });
+      expect(categorize).not.toHaveBeenCalled();
+    } finally {
+      process.env.AI_CATEGORIZATION = 'off';
+    }
+  });
+
+  it('says the AI pass is off when the operator switched it off', async () => {
+    // Off is the test default (src/test/setup.ts).
+    const response = await request(app)
+      .post('/api/transactions/commit')
+      .set(authHeader())
+      .send({ accountId: ACCOUNT_ID, rows, resolutions: {} })
+      .expect(201);
+
+    expect(response.body.ai).toEqual({ status: 'off' });
   });
 
   it('honours a skip resolution', async () => {
@@ -415,6 +551,34 @@ describe('POST /api/transactions/commit', () => {
 
     expect(response.body.imported).toBe(0);
     expect(db.transactionCreateMany).not.toHaveBeenCalled();
+    // Nothing went in, so there is nothing to undo and no import to list.
+    expect(db.importBatchCreate).not.toHaveBeenCalled();
+    expect(response.body.importId).toBeNull();
+  });
+
+  it('records the import with its files and the rows it actually inserted', async () => {
+    await request(app)
+      .post('/api/transactions/commit')
+      .set(authHeader())
+      .send({
+        accountId: ACCOUNT_ID,
+        rows,
+        resolutions: { '2': 'skip' },
+        fileNames: ['statement_hdfc.pdf'],
+      })
+      .expect(201);
+
+    expect(db.importBatchCreate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: {
+          userId: 'user_1',
+          accountId: ACCOUNT_ID,
+          fileNames: ['statement_hdfc.pdf'],
+          // One of the two was skipped.
+          rowCount: 1,
+        },
+      }),
+    );
   });
 
   it('rejects an empty row set', async () => {

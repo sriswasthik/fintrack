@@ -41,10 +41,19 @@ function renderDialog(transaction: Transaction | null = TRANSACTION, onSaved = v
   return { onSaved };
 }
 
+/**
+ * Replaces a field's value by typing over a selection of all of it.
+ *
+ * Not clear-then-type: those are two separate interactions, and on a loaded
+ * machine the controlled input could re-render between them and put the old
+ * value back, so the part ended up 187.43 instead of 100.
+ */
 async function setAmount(user: ReturnType<typeof userEvent.setup>, label: string, value: string) {
-  const field = screen.getByLabelText(label);
-  await user.clear(field);
-  await user.type(field, value);
+  const field = screen.getByLabelText(label) as HTMLInputElement;
+  await user.type(field, value, {
+    initialSelectionStart: 0,
+    initialSelectionEnd: field.value.length,
+  });
 }
 
 beforeEach(() => {

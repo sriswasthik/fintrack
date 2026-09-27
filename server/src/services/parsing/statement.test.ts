@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import { generateDataset } from '../../../prisma/seed-data';
 import { extractPdfText, type PdfPage, type PdfTextItem } from './pdf';
@@ -14,6 +14,10 @@ import {
   parseStatementDate,
   toPlainText,
 } from './statement';
+
+// The first test in this file to open a PDF pays for loading pdf.js: about a
+// second on its own, and past Vitest's 5s default when every suite runs at once.
+vi.setConfig({ testTimeout: 20_000 });
 
 const FIXTURES = join(__dirname, '..', '..', '..', '..', 'test-data');
 const plainPdf = () => readFileSync(join(FIXTURES, 'statement_plain.pdf'));

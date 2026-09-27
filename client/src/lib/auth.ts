@@ -139,5 +139,20 @@ export async function logout(): Promise<void> {
   await authApi.post('/api/auth/logout');
 }
 
+/**
+ * Asks for a reset link. The answer is the same whether or not the address
+ * has an account, so all a caller can show is the server's own wording.
+ */
+export async function forgotPassword(email: string): Promise<string> {
+  const { data } = await authApi.post<{ message: string }>('/api/auth/forgot-password', { email });
+  return data.message;
+}
+
+/** Spends a reset link on a new password. Every existing session ends. */
+export async function resetPassword(input: { token: string; password: string }): Promise<string> {
+  const { data } = await authApi.post<{ message: string }>('/api/auth/reset-password', input);
+  return data.message;
+}
+
 /** Re-exported so auth pages and data pages phrase a failure the same way. */
 export { errorMessage as authErrorMessage } from '@/lib/errors';

@@ -73,7 +73,7 @@ export function PayeesPage() {
   );
 
   return (
-    <main className="mx-auto max-w-6xl space-y-4 p-4">
+    <main className="mx-auto max-w-6xl space-y-4 p-4 sm:p-6">
       <Card>
         <CardHeader>
           <CardTitle>People &amp; Businesses</CardTitle>

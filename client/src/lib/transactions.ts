@@ -4,6 +4,8 @@ export interface Account {
   id: string;
   name: string;
   type: string;
+  /** How many transactions it holds — what deleting it would take with it. */
+  transactionCount?: number;
 }
 
 export type DuplicateKind = 'existing' | 'in-file';
@@ -34,12 +36,21 @@ export interface RowError {
 
 export type AmountSign = 'debit-positive' | 'credit-positive';
 
+export type DateOrder = 'dmy' | 'mdy';
+
 export interface ColumnMapping {
   date: string;
   description: string;
-  amount: string;
+  /** One signed amount column — or the debit/credit pair below. */
+  amount?: string;
+  debit?: string;
+  credit?: string;
+  /** With `amount`: a column saying Dr or Cr. */
+  drCr?: string;
   postedDate?: string;
   amountSign: AmountSign;
+  /** How numeric dates are written. Absent means the server works it out. */
+  dateOrder?: DateOrder;
 }
 
 export interface UploadPreview {
@@ -49,6 +60,11 @@ export interface UploadPreview {
   preset: string | null;
   headers: string[];
   mapping: ColumnMapping;
+  /**
+   * How numeric dates were read. `basis: 'default'` means nothing in the file
+   * proved the order and day-first was assumed. Absent on a PDF preview.
+   */
+  dateOrder?: { order: DateOrder; basis: 'mapping' | 'file' | 'default' };
   totalRows: number;
   duplicateCount: number;
   skippedRows: RowError[];
@@ -68,10 +84,32 @@ export type UploadResponse = UploadPreview | NeedsMapping;
 
 export type Resolution = 'keep' | 'skip';
 
+/** What the AI fallback did after an import. */
+export type AiPassResult =
+  | {
+      status: 'done';
+      /** Merchants given a category by the model (or its cache). */
+      categorized: number;
+      lowConfidence: number;
+      /** Payments to a person, which are never sent to the model. */
+      skippedPeople: number;
+      /** Still UNCATEGORIZED across the user's transactions. */
+      stillUnresolved: number;
+    }
+  | { status: 'off' }
+  | { status: 'unavailable'; reason: string };
+
 export interface CommitResult {
   accountId: string;
+  /** The import this commit created; null when every row was skipped. */
+  importId?: string | null;
   imported: number;
   skipped: number;
+  /** The rule engine's pass, over all of the user's transactions. */
+  categorization?: { uncategorized: number };
+  /** Salary credits recognised by their monthly pattern and filed as income. */
+  salary?: { payers: string[]; categorized: number };
+  ai?: AiPassResult;
 }
 
 export async function fetchAccounts(): Promise<Account[]> {
@@ -102,9 +140,12 @@ export async function commitImport(input: {
   accountId: string;
   rows: PreviewRow[];
   resolutions: Record<number, Resolution>;
+  /** Recorded on the import, so the history can say which statement it was. */
+  fileNames?: string[];
 }): Promise<CommitResult> {
   const { data } = await api.post<CommitResult>('/api/transactions/commit', {
     accountId: input.accountId,
+    fileNames: input.fileNames ?? [],
     rows: input.rows.map(({ duplicate: _duplicate, ...row }) => row),
     resolutions: Object.fromEntries(
       Object.entries(input.resolutions).map(([index, choice]) => [String(index), choice]),
@@ -210,6 +251,45 @@ export async function fetchTransactions(params: {
 }): Promise<TransactionPage> {
   const { data } = await api.get<TransactionPage>('/api/transactions', { params });
   return data;
+}
+
+export interface ExportFilters {
+  accountId?: string;
+  category?: string;
+  /** YYYY-MM, or give from/to instead. */
+  month?: string;
+  from?: string;
+  to?: string;
+}
+
+/**
+ * Downloads the filtered transactions as a CSV.
+ *
+ * Fetched through the API client rather than linked to directly: the request
+ * needs the bearer token, which lives in memory and never in a URL. The file
+ * is handed to the browser as an object URL and released straight after.
+ */
+export async function downloadTransactionsCsv(filters: ExportFilters = {}): Promise<string> {
+  const response = await api.get<Blob>('/api/transactions/export', {
+    params: filters,
+    responseType: 'blob',
+  });
+
+  const disposition = String(response.headers['content-disposition'] ?? '');
+  const fileName = /filename="([^"]+)"/.exec(disposition)?.[1] ?? 'fintrack-transactions.csv';
+
+  const url = URL.createObjectURL(response.data);
+  try {
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = fileName;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+  } finally {
+    URL.revokeObjectURL(url);
+  }
+  return fileName;
 }
 
 /** Divides one charge across categories. The server rejects a set that does not sum. */

@@ -54,15 +54,15 @@ describe('the three figures', () => {
     mount(<RangeTotals />);
 
     const debits = await screen.findByText(`${MINUS}₹8,499.53`);
-    expect(debits).toHaveClass('text-destructive');
+    expect(debits).toHaveClass('text-negative');
 
     const credits = screen.getByText('+₹4,599.00');
-    expect(credits).toHaveClass('text-chart-positive');
+    expect(credits).toHaveClass('text-positive');
 
     // Net is debit-positive like every stored amount, so a positive net is
     // money gone and reads red without anybody having to say so.
     const net = screen.getByText(`${MINUS}₹3,900.53`);
-    expect(net).toHaveClass('text-destructive');
+    expect(net).toHaveClass('text-negative');
   });
 
   it('turns net green when more arrived than left', async () => {
@@ -72,7 +72,7 @@ describe('the three figures', () => {
     mount(<RangeTotals />);
 
     const net = await screen.findByText('+₹60,043.01');
-    expect(net).toHaveClass('text-chart-positive');
+    expect(net).toHaveClass('text-positive');
     expect(screen.getByText('more arrived than left')).toBeInTheDocument();
   });
 
@@ -84,7 +84,7 @@ describe('the three figures', () => {
 
     expect(await screen.findByText('Nothing in this range.')).toBeInTheDocument();
     // Zero is not a debit and not a credit.
-    expect(screen.getAllByText('₹0.00')[0]).not.toHaveClass('text-destructive');
+    expect(screen.getAllByText('₹0.00')[0]).not.toHaveClass('text-negative');
   });
 });
 

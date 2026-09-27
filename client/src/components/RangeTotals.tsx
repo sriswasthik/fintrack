@@ -84,9 +84,13 @@ function Figure({
   hint?: string;
 }) {
   return (
-    <div className="rounded-lg border p-3">
+    <div className="bg-card rounded-md border p-3">
       <p className="text-muted-foreground text-xs font-medium tracking-wide uppercase">{label}</p>
-      <Amount value={value} direction={direction} className="text-lg font-semibold sm:text-xl" />
+      <Amount
+        value={value}
+        direction={direction}
+        className="text-lg font-medium tracking-tight sm:text-xl"
+      />
       {hint && <p className="text-muted-foreground text-xs">{hint}</p>}
     </div>
   );

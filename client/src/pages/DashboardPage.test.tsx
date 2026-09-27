@@ -2,6 +2,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { ReactNode } from 'react';
+import { MemoryRouter } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { DashboardPage } from '@/pages/DashboardPage';
@@ -27,9 +28,9 @@ vi.mock('@/context/auth-context', () => ({
 
 // Recharts measures its container, which jsdom cannot do, so the two chart
 // components are stubbed. Their own logic is covered by slices.test.ts.
-vi.mock('@/components/dashboard/CategoryDonut', () => ({
-  CategoryDonut: ({ onSelect }: { onSelect: (c: string) => void }) => (
-    <button onClick={() => onSelect('SHOPPING')}>donut: SHOPPING</button>
+vi.mock('@/components/dashboard/CategoryBars', () => ({
+  CategoryBars: ({ onSelect }: { onSelect: (c: string) => void }) => (
+    <button onClick={() => onSelect('SHOPPING')}>bars: SHOPPING</button>
   ),
 }));
 vi.mock('@/components/dashboard/SpendOverTime', () => ({
@@ -85,7 +86,9 @@ const JUNE: Dashboard = {
 function renderPage() {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   const wrapper = ({ children }: { children: ReactNode }) => (
-    <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+    <QueryClientProvider client={queryClient}>
+      <MemoryRouter>{children}</MemoryRouter>
+    </QueryClientProvider>
   );
   return render(<DashboardPage />, { wrapper });
 }
@@ -212,6 +215,24 @@ describe('DashboardPage', () => {
     expect(screen.getByText('111')).toBeInTheDocument();
   });
 
+  it('points at money in that has not been categorized, rather than counting it', async () => {
+    fetchDashboardMock.mockResolvedValue({
+      ...JUNE,
+      totals: { ...JUNE.totals, unreviewedIn: 185000 },
+    });
+    renderPage();
+
+    const link = await screen.findByRole('link', { name: /to review/ });
+    expect(link).toHaveTextContent('₹1,85,000 to review');
+    expect(link).toHaveAttribute('href', '/review');
+  });
+
+  it('says nothing about review when every credit is categorized', async () => {
+    renderPage();
+    await screen.findByText('₹8,959.49');
+    expect(screen.queryByRole('link', { name: /to review/ })).not.toBeInTheDocument();
+  });
+
   it('shows the direction of change with an arrow as well as colour', async () => {
     renderPage();
 
@@ -330,7 +351,7 @@ describe('DashboardPage', () => {
     renderPage();
     await screen.findByText('₹8,959.49');
 
-    await user.click(await screen.findByRole('button', { name: 'donut: SHOPPING' }));
+    await user.click(await screen.findByRole('button', { name: 'bars: SHOPPING' }));
 
     await waitFor(() =>
       expect(fetchTransactionsMock).toHaveBeenCalledWith(
@@ -347,8 +368,8 @@ describe('DashboardPage', () => {
     // Its own question, not a second copy of the tiles above: debits and
     // credits over a window the reader picks.
     expect(screen.getByText('Debits and credits')).toBeInTheDocument();
-    expect(await screen.findByText('\u2212₹1,73,967.09')).toHaveClass('text-destructive');
-    expect(screen.getByText('+₹2,34,010.10')).toHaveClass('text-chart-positive');
+    expect(await screen.findByText('\u2212₹1,73,967.09')).toHaveClass('text-negative');
+    expect(screen.getByText('+₹2,34,010.10')).toHaveClass('text-positive');
 
     // Narrowing the page to one account narrows the widget with it: that is a
     // filter on whose money, not on which window.

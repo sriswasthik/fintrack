@@ -1,12 +1,16 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { PrismaClient } from '../../generated/prisma/client';
 import { CATEGORIES } from '../rules/categories';
 import { DEFAULT_RULES } from '../rules/defaults';
 import { matchRule, orderRules, type EngineRule } from '../rules/engine';
-import { applyLlmCategorization } from './apply';
+import { applyLlmCategorization, runLlmPass } from './apply';
 import { EVAL_SET } from './eval-set';
-import type { CategorizationOutcome, MerchantCategorizer } from './categorize';
+import {
+  CategorizerConfigurationError,
+  type CategorizationOutcome,
+  type MerchantCategorizer,
+} from './categorize';
 
 /** Answers from a fixed table; anything unknown comes back as an abstention. */
 function scriptedCategorizer(
@@ -219,6 +223,111 @@ describe('applyLlmCategorization', () => {
 
     expect(summary.categorized + summary.stillUnresolved).toBe(summary.unresolved);
     expect(summary.stillUnresolved).toBe(1);
+  });
+
+  it('never sends a payment to a person to the model', async () => {
+    db.transactionFindMany.mockResolvedValue([
+      { id: 't1', normalizedMerchant: 'MUJI', counterpartyRaw: null, upiVpa: null },
+      // A UPI handle that is a mobile number is how an individual's address is made.
+      {
+        id: 't2',
+        normalizedMerchant: 'RAMESH KUMAR',
+        counterpartyRaw: 'Ramesh Kumar',
+        upiVpa: '9876543210@ybl',
+      },
+    ]);
+    const categorizer = scriptedCategorizer({ MUJI: { category: 'SHOPPING', confidence: 0.9 } });
+
+    const summary = await applyLlmCategorization(prisma, { userId: 'user_1', categorizer });
+
+    expect(categorizer.asked).toEqual([['MUJI']]);
+    expect(summary).toMatchObject({
+      unresolved: 2,
+      skippedPeople: 1,
+      categorized: 1,
+      stillUnresolved: 1,
+    });
+  });
+
+  it('does not touch the cache when everything unresolved is a person', async () => {
+    db.transactionFindMany.mockResolvedValue([
+      { id: 't1', normalizedMerchant: 'SAM R', counterpartyRaw: 'Sam R', upiVpa: '9000000001@ybl' },
+    ]);
+    const categorizer = scriptedCategorizer({});
+
+    const summary = await applyLlmCategorization(prisma, { userId: 'user_1', categorizer });
+
+    expect(categorizer.categorize).not.toHaveBeenCalled();
+    expect(db.cacheFindMany).not.toHaveBeenCalled();
+    expect(summary).toMatchObject({ skippedPeople: 1, stillUnresolved: 1 });
+  });
+});
+
+describe('runLlmPass', () => {
+  const unresolvedMerchant = () =>
+    db.transactionFindMany.mockResolvedValue(transactions([['t1', 'MUJI']]));
+
+  // Off is the test default (src/test/setup.ts); these tests are about the pass.
+  beforeEach(() => {
+    process.env.AI_CATEGORIZATION = 'on';
+  });
+  afterEach(() => {
+    process.env.AI_CATEGORIZATION = 'off';
+  });
+
+  it('runs the fallback and reports what it did', async () => {
+    unresolvedMerchant();
+    const categorizer = scriptedCategorizer({ MUJI: { category: 'SHOPPING', confidence: 0.9 } });
+
+    const result = await runLlmPass(prisma, { userId: 'user_1', categorizer });
+
+    expect(result).toMatchObject({ status: 'done', categorized: 1 });
+  });
+
+  it('does nothing when switched off', async () => {
+    process.env.AI_CATEGORIZATION = 'off';
+    unresolvedMerchant();
+    const categorizer = scriptedCategorizer({});
+
+    expect(await runLlmPass(prisma, { userId: 'user_1', categorizer })).toEqual({
+      status: 'off',
+    });
+    expect(categorizer.categorize).not.toHaveBeenCalled();
+    expect(db.transactionFindMany).not.toHaveBeenCalled();
+  });
+
+  it('reports rather than throws when the model is not configured', async () => {
+    unresolvedMerchant();
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const categorizer: MerchantCategorizer = {
+      categorize: vi.fn(async () => {
+        throw new CategorizerConfigurationError('Could not resolve authentication method');
+      }),
+    };
+
+    const result = await runLlmPass(prisma, { userId: 'user_1', categorizer });
+
+    expect(result).toEqual({
+      status: 'unavailable',
+      reason: 'AI categorization is not configured on this server.',
+    });
+    // The operator gets the real cause; the user gets a sentence.
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('authentication method'));
+    expect(db.transactionUpdate).not.toHaveBeenCalled();
+    warn.mockRestore();
+  });
+
+  it('lets any other failure through', async () => {
+    unresolvedMerchant();
+    const categorizer: MerchantCategorizer = {
+      categorize: vi.fn(async () => {
+        throw new Error('database went away');
+      }),
+    };
+
+    await expect(runLlmPass(prisma, { userId: 'user_1', categorizer })).rejects.toThrow(
+      'database went away',
+    );
   });
 });
 

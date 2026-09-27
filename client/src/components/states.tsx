@@ -38,7 +38,7 @@ export function EmptyState({
 }) {
   return (
     <div className="flex flex-col items-center gap-2 py-10 text-center">
-      <p className="text-sm font-medium">{title}</p>
+      <p className="font-display text-lg font-semibold tracking-tight">{title}</p>
       {description && <p className="text-muted-foreground max-w-sm text-sm">{description}</p>}
       {action && <div className="mt-2">{action}</div>}
     </div>

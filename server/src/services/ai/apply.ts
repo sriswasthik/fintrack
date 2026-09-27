@@ -9,7 +9,12 @@
  */
 import type { PrismaClient } from '../../generated/prisma/client';
 import type { Category } from '../../generated/prisma/enums';
-import { LOW_CONFIDENCE_THRESHOLD, type MerchantCategorizer } from './categorize';
+import { classifyCounterparty } from '../rules/counterparty';
+import {
+  CategorizerConfigurationError,
+  LOW_CONFIDENCE_THRESHOLD,
+  type MerchantCategorizer,
+} from './categorize';
 
 export interface ApplyLlmOptions {
   userId: string;
@@ -21,6 +26,12 @@ export interface ApplyLlmOptions {
 export interface ApplyLlmSummary {
   /** Transactions that were UNCATEGORIZED when the pass started. */
   unresolved: number;
+  /**
+   * Of those, payments to a person, which are never sent to the model: a
+   * person's name says nothing about what the money was for, and it is not the
+   * model's to see. They stay in the review queue.
+   */
+  skippedPeople: number;
   /** Distinct merchants behind them. */
   distinctMerchants: number;
   /** Merchants answered from the cache without a model call. */
@@ -47,12 +58,28 @@ export async function applyLlmCategorization(
   prisma: PrismaClient,
   { userId, categorizer, ignoreCache = false }: ApplyLlmOptions,
 ): Promise<ApplyLlmSummary> {
-  const unresolved = await prisma.transaction.findMany({
+  const pending = await prisma.transaction.findMany({
     where: { account: { userId }, category: 'UNCATEGORIZED', source: 'RULE' },
-    select: { id: true, normalizedMerchant: true },
+    select: { id: true, normalizedMerchant: true, counterpartyRaw: true, upiVpa: true },
   });
 
+  const unresolved = pending.filter((t) => classifyCounterparty(t).type !== 'PERSON');
+  const skippedPeople = pending.length - unresolved.length;
+
   const merchants = [...new Set(unresolved.map((t) => t.normalizedMerchant))].sort();
+  if (merchants.length === 0) {
+    return {
+      unresolved: pending.length,
+      skippedPeople,
+      distinctMerchants: 0,
+      fromCache: 0,
+      sentToModel: 0,
+      categorized: 0,
+      lowConfidence: 0,
+      rejected: 0,
+      stillUnresolved: pending.length,
+    };
+  }
 
   const cached = ignoreCache
     ? []
@@ -116,13 +143,59 @@ export async function applyLlmCategorization(
   }
 
   return {
-    unresolved: unresolved.length,
+    unresolved: pending.length,
+    skippedPeople,
     distinctMerchants: merchants.length,
     fromCache: cachedByMerchant.size,
     sentToModel: toAsk.length,
     categorized,
     lowConfidence,
     rejected,
-    stillUnresolved: unresolved.length - categorized,
+    stillUnresolved: pending.length - categorized,
   };
+}
+
+/** What the AI pass did after an import, for the client to report. */
+export type LlmPassResult =
+  | ({ status: 'done' } & ApplyLlmSummary)
+  /** Switched off with AI_CATEGORIZATION=off. */
+  | { status: 'off' }
+  /** No usable credentials, or the account cannot use the model. */
+  | { status: 'unavailable'; reason: string };
+
+/**
+ * Whether unresolved merchants may be sent to the model at all.
+ *
+ * On unless AI_CATEGORIZATION=off. The switch exists for an operator who
+ * wants the monthly summary (which only ever sees totals) without merchant
+ * names leaving the server.
+ */
+export function aiCategorizationEnabled(): boolean {
+  return process.env.AI_CATEGORIZATION !== 'off';
+}
+
+/**
+ * The LLM fallback as a step of an import: runs when it is switched on, and
+ * reports rather than throws when it cannot run.
+ *
+ * A missing key must not fail an import — the rows are already stored and the
+ * rule engine has already done its part — but it must not be silent either,
+ * or categorization would quietly stop with nothing to say why. So the reason
+ * is logged in full for the operator and summarised for the user.
+ */
+export async function runLlmPass(
+  prisma: PrismaClient,
+  options: ApplyLlmOptions,
+): Promise<LlmPassResult> {
+  if (!aiCategorizationEnabled()) return { status: 'off' };
+  try {
+    return { status: 'done', ...(await applyLlmCategorization(prisma, options)) };
+  } catch (error) {
+    if (!(error instanceof CategorizerConfigurationError)) throw error;
+    console.warn(`AI categorization unavailable: ${error.message}`);
+    return {
+      status: 'unavailable',
+      reason: 'AI categorization is not configured on this server.',
+    };
+  }
 }

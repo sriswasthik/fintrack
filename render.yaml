@@ -42,5 +42,8 @@ services:
         generateValue: true # 256-bit value generated once by Render.
       - key: JWT_REFRESH_SECRET
         generateValue: true
+      # Off: an instance holding real statements must not hand anonymous
+      # visitors a session. Turn it on only for a separate demo-only deployment
+      # whose database holds nothing but the demo:seed sample account.
       - key: DEMO_MODE
-        value: "on"
+        value: 'off'

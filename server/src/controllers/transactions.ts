@@ -7,10 +7,17 @@
  * keep/skip decisions and does the insert.
  */
 import type { RequestHandler } from 'express';
+import Papa from 'papaparse';
 import { z } from 'zod';
 
 import { getPrisma } from '../db';
-import { LOW_CONFIDENCE_THRESHOLD } from '../services/ai/categorize';
+import { runLlmPass } from '../services/ai/apply';
+import { categorizeSalaryCredits } from '../services/india/salaryIncome';
+import {
+  AnthropicMerchantCategorizer,
+  LOW_CONFIDENCE_THRESHOLD,
+  type MerchantCategorizer,
+} from '../services/ai/categorize';
 import { monthWindow } from '../services/dashboard/window';
 import { CATEGORIES } from '../services/rules/categories';
 import { classifyCounterparty } from '../services/rules/counterparty';
@@ -20,24 +27,34 @@ import { HttpError } from '../middleware/errorHandler';
 import {
   CsvMappingError,
   HEADER_PRESETS,
-  detectPreset,
+  detectMapping,
   inspectHeaders,
   parseTransactions,
   type ColumnMapping,
 } from '../services/parsing/csv';
 import { dateRangeOf, flagDuplicates, type ExistingTransaction } from '../services/parsing/dedup';
+import { tableToCsv, UnreadableSpreadsheetError } from '../services/parsing/spreadsheet';
 import { resolvePayees } from '../services/payees/resolve';
 import { applyRuleEngine } from '../services/rules/apply';
 import { scopeToUser } from './user-scope';
 
 /** An explicit column mapping supplied by the client's mapping UI. */
-const columnMappingSchema = z.object({
-  date: z.string().min(1),
-  description: z.string().min(1),
-  amount: z.string().min(1),
-  postedDate: z.string().min(1).optional(),
-  amountSign: z.enum(['debit-positive', 'credit-positive']).default('debit-positive'),
-});
+const columnMappingSchema = z
+  .object({
+    date: z.string().min(1),
+    description: z.string().min(1),
+    /** One signed amount column, or the debit/credit pair below. */
+    amount: z.string().min(1).optional(),
+    debit: z.string().min(1).optional(),
+    credit: z.string().min(1).optional(),
+    drCr: z.string().min(1).optional(),
+    postedDate: z.string().min(1).optional(),
+    amountSign: z.enum(['debit-positive', 'credit-positive']).default('debit-positive'),
+    dateOrder: z.enum(['dmy', 'mdy']).optional(),
+  })
+  .refine((m) => m.amount || m.debit || m.credit, {
+    message: 'mapping needs an amount column, or debit and credit columns',
+  });
 
 const uploadBodySchema = z.object({
   accountId: z.string().min(1, 'accountId is required'),
@@ -79,7 +96,50 @@ const commitBodySchema = z.object({
   rows: z.array(previewRowSchema).min(1, 'No rows to import').max(20000),
   /** Row index -> what to do with it. Rows without an entry are kept. */
   resolutions: z.record(z.string(), z.enum(['keep', 'skip'])).default({}),
+  /**
+   * The files the rows came from, recorded on the import so the history can
+   * name it (Phase 20). Optional: a script committing rows has no file.
+   */
+  fileNames: z.array(z.string().trim().min(1).max(255)).max(50).default([]),
 });
+
+let categorizer: MerchantCategorizer | undefined;
+
+/**
+ * Lazily built, like the summarizer: importing this module must not fail on a
+ * server with no API key. Only actually asking the model does.
+ */
+function getCategorizer(): MerchantCategorizer {
+  categorizer ??= new AnthropicMerchantCategorizer();
+  return categorizer;
+}
+
+/** Test seam, so a route test never reaches the network. */
+export function setMerchantCategorizer(next: MerchantCategorizer | undefined): void {
+  categorizer = next;
+}
+
+/**
+ * Everything that runs after rows land: the deterministic rules, then salary
+ * credits recognised by their monthly pattern, then the model for what is
+ * left, then the payee ledger.
+ *
+ * The order is load-bearing. The model only ever sees what no rule settled
+ * (PROJECT_CONTEXT.md §4), and payees are resolved last because which lines
+ * get one depends on the category — an ATM withdrawal has no counterparty.
+ * Scoped to the caller throughout: transfer pairing looks across their other
+ * accounts, and must never look across anybody else's.
+ */
+async function categorizeForUser(userId: string) {
+  const prisma = getPrisma();
+  const categorization = await applyRuleEngine(prisma, { userId });
+  // Before the model: a salary is recognised by its pattern, deterministically,
+  // and an employer's name is exactly what the model could only guess at.
+  const salary = await categorizeSalaryCredits(prisma, { userId });
+  const ai = await runLlmPass(prisma, { userId, categorizer: getCategorizer() });
+  const payees = await resolvePayees(prisma, { userId });
+  return { categorization, salary, ai, payees };
+}
 
 /**
  * The named account, provided it belongs to the caller.
@@ -111,18 +171,25 @@ const noSuchTransaction = () => new HttpError(404, 'No such transaction');
  * Returns a preview. Writes nothing.
  */
 export const uploadTransactions: RequestHandler = async (req, res) => {
-  if (!req.file) throw new HttpError(400, 'Expected a CSV file in the "file" field');
+  if (!req.file) throw new HttpError(400, 'Expected a CSV or Excel file in the "file" field');
 
   const userId = currentUserId(req);
   const { accountId, mapping } = uploadBodySchema.parse(req.body);
   await requireAccount(userId, accountId);
 
-  const csvText = req.file.buffer.toString('utf8');
+  // A workbook is read as the CSV it holds; from here on the two are one path.
+  let csvText: string;
+  try {
+    csvText = tableToCsv(req.file.buffer, req.file.originalname);
+  } catch (error) {
+    if (error instanceof UnreadableSpreadsheetError) throw new HttpError(400, error.message);
+    throw error;
+  }
   if (!csvText.trim()) throw new HttpError(400, 'The uploaded file is empty');
 
   const { headers, sampleRows } = inspectHeaders(csvText);
-  const preset = detectPreset(headers);
-  const resolved: ColumnMapping | undefined = mapping ?? preset?.mapping;
+  const detected = mapping ? null : detectMapping(headers);
+  const resolved: ColumnMapping | undefined = mapping ?? detected?.mapping;
 
   // Unknown layout and no mapping supplied: hand the headers back so the client
   // can put up a column-mapping UI and resubmit.
@@ -132,7 +199,7 @@ export const uploadTransactions: RequestHandler = async (req, res) => {
       fileName: req.file.originalname,
       headers,
       sampleRows,
-      requiredFields: ['date', 'description', 'amount'],
+      requiredFields: ['date', 'description', 'amount | debit + credit'],
       knownPresets: HEADER_PRESETS.map((p) => ({ id: p.id, label: p.label, columns: p.required })),
     });
     return;
@@ -177,9 +244,11 @@ export const uploadTransactions: RequestHandler = async (req, res) => {
     status: 'preview',
     fileName: req.file.originalname,
     accountId,
-    preset: mapping ? 'custom' : (preset?.id ?? null),
+    preset: mapping ? 'custom' : (detected?.id ?? null),
     headers,
     mapping: resolved,
+    /** How numeric dates were read, and whether the file proved it. */
+    dateOrder: parsed.dateOrder,
     totalRows: rows.length,
     duplicateCount: rows.filter((r) => r.duplicate).length,
     skippedRows: parsed.errors,
@@ -190,53 +259,60 @@ export const uploadTransactions: RequestHandler = async (req, res) => {
 /**
  * POST /api/transactions/commit
  *
- * Inserts the reviewed rows. Categorization is Phase 3/4's job, so everything
- * lands as UNCATEGORIZED with zero confidence.
+ * Inserts the reviewed rows as UNCATEGORIZED with zero confidence, then
+ * categorizes them: the rule engine first, the model for whatever it left.
+ *
+ * The rows are tagged with an `ImportBatch` written in the same transaction,
+ * which is what lets the whole import be undone later as one unit
+ * (`DELETE /api/imports/:id`).
  */
 export const commitTransactions: RequestHandler = async (req, res) => {
   const userId = currentUserId(req);
-  const { accountId, rows, resolutions } = commitBodySchema.parse(req.body);
+  const { accountId, rows, resolutions, fileNames } = commitBodySchema.parse(req.body);
   await requireAccount(userId, accountId);
 
   const skipped = rows.filter((row) => resolutions[String(row.index)] === 'skip');
   const toImport = rows.filter((row) => resolutions[String(row.index)] !== 'skip');
 
+  let importId: string | null = null;
   if (toImport.length > 0) {
-    await getPrisma().transaction.createMany({
-      data: toImport.map((row) => ({
-        accountId,
-        date: new Date(`${row.date}T00:00:00.000Z`),
-        postedDate: row.postedDate ? new Date(`${row.postedDate}T00:00:00.000Z`) : null,
-        description: row.description,
-        rawMerchant: row.rawMerchant,
-        normalizedMerchant: row.normalizedMerchant,
-        counterpartyRaw: row.counterpartyRaw,
-        upiVpa: row.upiVpa,
-        amount: row.amount.toFixed(2),
-        currency: 'INR',
-        category: 'UNCATEGORIZED' as const,
-        confidence: 0,
-        source: 'RULE' as const,
-      })),
+    importId = await getPrisma().$transaction(async (tx) => {
+      const batch = await tx.importBatch.create({
+        data: { userId, accountId, fileNames, rowCount: toImport.length },
+        select: { id: true },
+      });
+      await tx.transaction.createMany({
+        data: toImport.map((row) => ({
+          accountId,
+          importBatchId: batch.id,
+          date: new Date(`${row.date}T00:00:00.000Z`),
+          postedDate: row.postedDate ? new Date(`${row.postedDate}T00:00:00.000Z`) : null,
+          description: row.description,
+          rawMerchant: row.rawMerchant,
+          normalizedMerchant: row.normalizedMerchant,
+          counterpartyRaw: row.counterpartyRaw,
+          upiVpa: row.upiVpa,
+          amount: row.amount.toFixed(2),
+          currency: 'INR',
+          category: 'UNCATEGORIZED' as const,
+          confidence: 0,
+          source: 'RULE' as const,
+        })),
+      });
+      return batch.id;
     });
   }
 
-  // The deterministic pass runs immediately, before anything reaches the LLM
-  // fallback (PROJECT_CONTEXT.md §4). It is scoped to the caller because
-  // transfer pairing looks across their other accounts — and must never look
-  // across anybody else's.
-  const categorization = await applyRuleEngine(getPrisma(), { userId });
-
-  // The ledger is resolved after categorization, not before: which lines get a
-  // payee depends on the category (an ATM withdrawal has no counterparty), so
-  // the order is load-bearing rather than incidental.
-  const payees = await resolvePayees(getPrisma(), { userId });
+  const { categorization, salary, ai, payees } = await categorizeForUser(userId);
 
   res.status(201).json({
     accountId,
+    importId,
     imported: toImport.length,
     skipped: skipped.length,
     categorization,
+    salary,
+    ai,
     payees,
   });
 };
@@ -353,6 +429,123 @@ export const listTransactions: RequestHandler = async (req, res) => {
   res.json({ total, limit, offset, transactions: rows.map(serializeTransaction) });
 };
 
+const exportQuerySchema = z
+  .object({
+    accountId: z.string().min(1).optional(),
+    category: z.enum(CATEGORIES).optional(),
+    month: z
+      .string()
+      .regex(/^\d{4}-(0[1-9]|1[0-2])$/, 'month must be YYYY-MM')
+      .optional(),
+    /** Inclusive, YYYY-MM-DD. */
+    from: z
+      .string()
+      .regex(/^\d{4}-\d{2}-\d{2}$/, 'from must be YYYY-MM-DD')
+      .optional(),
+    /** Inclusive, YYYY-MM-DD. */
+    to: z
+      .string()
+      .regex(/^\d{4}-\d{2}-\d{2}$/, 'to must be YYYY-MM-DD')
+      .optional(),
+  })
+  .refine((q) => !(q.month && (q.from || q.to)), {
+    message: 'Give either month or from/to, not both',
+  })
+  .refine((q) => !q.from || !q.to || q.from <= q.to, { message: 'from must not be after to' });
+
+/**
+ * Neutralises a text cell a spreadsheet would otherwise run as a formula.
+ *
+ * A bank narration is text somebody else wrote. One that begins `=`, `+`, `-`
+ * or `@` is a formula to Excel and Sheets the moment the file is opened —
+ * `=HYPERLINK(...)` in a merchant name is the classic CSV injection. A leading
+ * apostrophe is how a spreadsheet is told "this is text", and it is invisible
+ * in the cell.
+ */
+export function csvSafe(value: string): string {
+  return /^[=+\-@\t\r]/.test(value) ? `'${value}` : value;
+}
+
+/**
+ * GET /api/transactions/export
+ *
+ * The caller's transactions as a CSV a spreadsheet opens directly, with the
+ * same filters as the list plus an inclusive date range. Debits and credits
+ * are separate unsigned columns rather than one signed amount: the stored
+ * debit-positive convention is the opposite of what most people expect a
+ * minus sign in a bank export to mean, and two columns cannot be misread.
+ */
+export const exportTransactions: RequestHandler = async (req, res) => {
+  const { accountId, category, month, from, to } = exportQuerySchema.parse(req.query);
+  const userId = await scopeToUser(getPrisma(), req, accountId);
+
+  const monthRange = month ? monthWindow(month) : null;
+  const date = monthRange
+    ? { gte: monthRange.from, lt: monthRange.to }
+    : from || to
+      ? {
+          ...(from ? { gte: new Date(`${from}T00:00:00.000Z`) } : {}),
+          // Inclusive end: everything before the start of the following day.
+          ...(to ? { lt: new Date(Date.parse(`${to}T00:00:00.000Z`) + 86_400_000) } : {}),
+        }
+      : undefined;
+
+  const rows = await getPrisma().transaction.findMany({
+    where: {
+      account: { userId },
+      ...(accountId ? { accountId } : {}),
+      ...(category ? { category } : {}),
+      ...(date ? { date } : {}),
+    },
+    orderBy: [{ date: 'asc' }, { id: 'asc' }],
+    include: { splits: true, account: { select: { name: true } } },
+  });
+
+  const money = (value: number) => (value === 0 ? '' : Math.abs(value).toFixed(2));
+
+  const csv = Papa.unparse(
+    {
+      fields: [
+        'Date',
+        'Posted Date',
+        'Account',
+        'Description',
+        'Merchant',
+        'Category',
+        'Debit',
+        'Credit',
+        'Currency',
+        'Categorized By',
+        'Splits',
+      ],
+      data: rows.map((t) => {
+        const amount = Number(t.amount);
+        return [
+          t.date.toISOString().slice(0, 10),
+          t.postedDate ? t.postedDate.toISOString().slice(0, 10) : '',
+          csvSafe(t.account.name),
+          csvSafe(t.description),
+          csvSafe(t.normalizedMerchant),
+          t.category,
+          amount > 0 ? money(amount) : '',
+          amount < 0 ? money(amount) : '',
+          t.currency,
+          t.source,
+          t.splits.map((s) => `${s.category} ${Number(s.amount).toFixed(2)}`).join('; '),
+        ];
+      }),
+    },
+    { newline: '\r\n' },
+  );
+
+  const label = month ?? (from || to ? `${from ?? 'start'}_to_${to ?? 'end'}` : 'all');
+  res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+  res.setHeader('Content-Disposition', `attachment; filename="fintrack-transactions-${label}.csv"`);
+  // A byte-order mark, so Excel reads the file as UTF-8 rather than a code
+  // page — narrations carry accented merchant names and the occasional ₹.
+  res.send(String.fromCharCode(0xfeff) + csv);
+};
+
 /** GET /api/transactions/:id */
 export const getTransaction: RequestHandler = async (req, res) => {
   const transaction = await getPrisma().transaction.findFirst({
@@ -443,16 +636,15 @@ export const clearSplit: RequestHandler = async (req, res) => {
   res.json({ removed: count });
 };
 
-/** POST /api/transactions/categorize — re-runs the deterministic pass. */
+/** POST /api/transactions/categorize — re-runs the rules, then the model for what they leave. */
 export const categorizeTransactions: RequestHandler = async (req, res) => {
   const userId = currentUserId(req);
   const { accountId } = z.object({ accountId: z.string().min(1) }).parse(req.body);
   await requireAccount(userId, accountId);
 
-  const categorization = await applyRuleEngine(getPrisma(), { userId });
-  const payees = await resolvePayees(getPrisma(), { userId });
+  const { categorization, salary, ai, payees } = await categorizeForUser(userId);
 
-  res.json({ ...categorization, payees });
+  res.json({ ...categorization, salary, ai, payees });
 };
 
 const reviewQueueQuerySchema = z.object({

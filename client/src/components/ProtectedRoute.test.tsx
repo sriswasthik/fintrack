@@ -76,7 +76,10 @@ describe('ProtectedRoute', () => {
 describe('a write-only page during a demo', () => {
   it('explains why rather than showing a form that cannot be submitted', () => {
     useAuthMock.mockReturnValue(
-      session({ user: { id: 'user_demo', email: 'demo@fintrack.local', name: null }, isDemo: true }),
+      session({
+        user: { id: 'user_demo', email: 'demo@fintrack.local', name: null },
+        isDemo: true,
+      }),
     );
 
     render(

@@ -182,7 +182,9 @@ describe('rule ordering is decided by the rule set, not by rule ids', () => {
       const merchant = probe(rule.pattern);
       if (!merchant) continue;
 
-      const matching = DEFAULT_RULES.filter((other) => new RegExp(other.pattern, 'i').test(merchant));
+      const matching = DEFAULT_RULES.filter((other) =>
+        new RegExp(other.pattern, 'i').test(merchant),
+      );
       const best = Math.min(...matching.map((m) => m.priority));
       const categories = new Set(
         matching.filter((m) => m.priority === best).map((m) => m.category),

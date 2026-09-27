@@ -35,9 +35,9 @@ function Total({
   hint?: string;
 }) {
   return (
-    <div className="rounded-lg border p-3">
+    <div className="bg-card rounded-md border p-3">
       <p className="text-muted-foreground text-xs">{label}</p>
-      <Amount value={value} direction={direction} className="text-lg font-semibold" />
+      <Amount value={value} direction={direction} className="text-lg font-medium tracking-tight" />
       {hint && <p className="text-muted-foreground text-xs">{hint}</p>}
     </div>
   );

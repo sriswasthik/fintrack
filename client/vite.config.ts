@@ -19,5 +19,8 @@ export default defineConfig({
     setupFiles: ['./src/test/setup.ts'],
     include: ['src/**/*.{test,spec}.{ts,tsx}'],
     css: true,
+    // jsdom plus user-event typing is slow on a busy machine; the 5s default
+    // timed out interaction tests that pass in well under a second alone.
+    testTimeout: 15000,
   },
 });

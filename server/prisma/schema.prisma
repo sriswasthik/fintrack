@@ -108,13 +108,16 @@ model User {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  accounts         Account[]
-  rules            Rule[]
-  refreshTokens    RefreshToken[]
-  anomalyFlags     AnomalyFlag[]
-  monthlySummaries MonthlySummary[]
+  accounts          Account[]
+  rules             Rule[]
+  refreshTokens     RefreshToken[]
+  anomalyFlags      AnomalyFlag[]
+  monthlySummaries  MonthlySummary[]
   categoryOverrides CategoryOverride[]
   payees            Payee[]
+  importBatches     ImportBatch[]
+  budgets           Budget[]
+  passwordResets    PasswordResetToken[]
 }
 
 /// Long-lived refresh tokens, stored hashed. Issued in Phase 9.
@@ -132,6 +135,24 @@ model RefreshToken {
   @@index([expiresAt])
 }
 
+/// A single-use link for setting a new password, emailed on request (Phase 20).
+///
+/// Stored hashed, exactly like a refresh token: the table is something a
+/// backup or a read replica can leak, and a leaked row must not be a working
+/// link. Short-lived, and spent the moment it is used.
+model PasswordResetToken {
+  id     String @id @default(cuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  tokenHash String    @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([userId])
+}
+
 model Account {
   id     String @id @default(cuid())
   userId String
@@ -143,10 +164,37 @@ model Account {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  transactions Transaction[]
+  transactions  Transaction[]
+  importBatches ImportBatch[]
 
   @@unique([userId, name])
   @@index([userId])
+}
+
+/// One confirmed import: the rows a single Confirm Import inserted (Phase 20).
+///
+/// It exists so an import can be undone as a unit. Without it the rows of a
+/// wrong statement — the wrong account chosen, the wrong month uploaded — are
+/// indistinguishable from the rest and can only be removed one at a time.
+model ImportBatch {
+  id        String  @id @default(cuid())
+  userId    String
+  user      User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  accountId String
+  account   Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  /// The files as they were uploaded, so a person can recognise the import.
+  fileNames String[]
+  /// Rows inserted by the commit. Fixed at the time: the rows themselves can
+  /// go later, with their account.
+  rowCount  Int
+
+  createdAt DateTime @default(now())
+
+  transactions Transaction[]
+
+  @@index([userId, createdAt])
+  @@index([accountId])
 }
 
 model Transaction {
@@ -155,15 +203,15 @@ model Transaction {
   account   Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
 
   /// Date the transaction occurred.
-  date DateTime
+  date       DateTime
   /// Date it cleared. Null means the transaction is still pending (§8 case 6).
   postedDate DateTime?
 
   /// The raw description line as it appeared in the bank export.
-  description String
+  description        String
   /// The merchant substring lifted out of the description, still messy
   /// (e.g. "SQ *JOES COFFEE", "TST* THE HALL", "PAYPAL *STEAMGAMES").
-  rawMerchant String
+  rawMerchant        String
   /// The cleaned merchant key used for rule matching and LLM caching (§8 case 8).
   normalizedMerchant String
 
@@ -215,6 +263,12 @@ model Transaction {
   payeeId String?
   payee   Payee?  @relation(fields: [payeeId], references: [id], onDelete: SetNull)
 
+  /// The import that brought the row in (Phase 20). Null for rows loaded by
+  /// the seed scripts, which were never imported and so cannot be un-imported.
+  /// Cascade, because undoing an import is deleting its batch.
+  importBatchId String?
+  importBatch   ImportBatch? @relation(fields: [importBatchId], references: [id], onDelete: Cascade)
+
   splits       Split[]
   anomalyFlags AnomalyFlag[]
   overrides    CategoryOverride[]
@@ -223,6 +277,7 @@ model Transaction {
   @@index([normalizedMerchant])
   @@index([category])
   @@index([date])
+  @@index([importBatchId])
 }
 
 /// A single charge divided across categories, e.g. a big-box order mixing
@@ -264,7 +319,7 @@ model CategoryOverride {
   fromCategory Category
   toCategory   Category
   /// Whether the correction also taught a rule for the merchant.
-  learnedRule  Boolean @default(false)
+  learnedRule  Boolean  @default(false)
 
   createdAt DateTime @default(now())
 
@@ -332,13 +387,13 @@ model Payee {
 
   transactions Transaction[]
 
+  /// One payee per address per user. Partial by nature: Postgres treats NULLs as
+  /// distinct, so the many payees with no address never collide with each other.
+  @@unique([userId, upiVpa])
   @@index([userId])
   /// Name matching is scoped to the user and case-insensitive, so the lookup is
   /// on the lower-cased name; Postgres needs the expression index to use it.
   @@index([userId, displayName])
-  /// One payee per address per user. Partial by nature: Postgres treats NULLs as
-  /// distinct, so the many payees with no address never collide with each other.
-  @@unique([userId, upiVpa])
 }
 
 /// Memoizes every LLM categorization decision so the same merchant is never
@@ -362,10 +417,10 @@ model AnomalyFlag {
   userId String
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  type     AnomalyType
-  severity AnomalySeverity
+  type        AnomalyType
+  severity    AnomalySeverity
   /// Calendar month the flag belongs to, as "YYYY-MM".
-  month    String
+  month       String
   explanation String
 
   /// Stable identity for the underlying finding, e.g. "UNUSUAL_AMOUNT:<txn id>".
@@ -385,14 +440,35 @@ model AnomalyFlag {
   @@index([type])
 }
 
+/// A monthly spending limit for one category (Phase 20).
+///
+/// Spend against it is computed per request by the dashboard aggregation —
+/// transfers excluded, refunds netted, splits counted by part — rather than
+/// stored, for the same reason the payee ledger computes its totals: a stored
+/// figure is one import away from disagreeing with the rows.
+model Budget {
+  id     String @id @default(cuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  category Category
+  /// Rupees per calendar month. Always positive.
+  amount   Decimal  @db.Decimal(12, 2)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, category])
+}
+
 model MonthlySummary {
   id     String @id @default(cuid())
   userId String
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   /// "YYYY-MM".
-  month   String
-  content String
+  month         String
+  content       String
   /// The pre-computed aggregates the summary was generated from, wrapped with a
   /// note of how it was produced: `{ stats, generation }`. Kept so the text can
   /// be checked against the numbers it claims (PROJECT_CONTEXT.md §7), and so a

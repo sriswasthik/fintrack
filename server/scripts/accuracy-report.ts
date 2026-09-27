@@ -315,11 +315,7 @@ residual is rows it left for review, exactly as §7 requires.
 
 ${table(
   ['Merchant', 'Got', 'Expected'],
-  incorrect.map((s) => [
-    `\`${s.transaction.normalizedMerchant}\``,
-    s.actual,
-    s.expected,
-  ]),
+  incorrect.map((s) => [`\`${s.transaction.normalizedMerchant}\``, s.actual, s.expected]),
 )}`
 }
 

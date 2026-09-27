@@ -90,7 +90,7 @@ function greeting(name?: string | null): string {
  * input arriving in a document — and an email client is a HTML renderer like
  * any other.
  */
-function escapeHtml(value: string): string {
+export function escapeHtml(value: string): string {
   return value
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
@@ -254,7 +254,7 @@ ${FEATURES.map((feature, i) => featureRow(feature, i === FEATURES.length - 1)).j
 }
 
 /** Wraps at a width a plain-text mail client will not re-flow badly. */
-function wrap(body: string, width: number): string[] {
+export function wrap(body: string, width: number): string[] {
   const lines: string[] = [];
   let line = '';
   for (const word of body.split(/\s+/)) {

@@ -88,11 +88,15 @@ describe('a demo session is read-only', () => {
   });
 
   it('still reads, which is the entire point of it', async () => {
-    const findMany = vi
-      .fn()
-      .mockResolvedValue([
-        { id: 'acct_1', name: 'Everyday Checking', type: 'CHECKING', createdAt: new Date() },
-      ]);
+    const findMany = vi.fn().mockResolvedValue([
+      {
+        id: 'acct_1',
+        name: 'Everyday Checking',
+        type: 'CHECKING',
+        createdAt: new Date(),
+        _count: { transactions: 3 },
+      },
+    ]);
     Object.assign(prismaMock, {
       user: { findUnique: db.userFindUnique },
       account: { findMany },

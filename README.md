@@ -26,7 +26,8 @@ the number of transactions.
 
 ## What it does
 
-- **Imports** a CSV from any bank: mixed date formats, either sign convention,
+- **Imports** a CSV or Excel (XLS/XLSX) export, or a PDF statement: account
+  details above the table, separate debit and credit columns, day-first dates,
   noisy merchant strings. Duplicates from a bank sync glitch are flagged for you
   to resolve, never dropped silently.
 - **Categorizes** with a rule engine over normalized merchant names, falling
@@ -40,6 +41,10 @@ the number of transactions.
   spikes, subscription price rises, newly-appearing recurring charges.
 - **Writes a recap** in plain English from the computed figures only.
 
+The complete project documentation — features, architecture, API, data model,
+security, design system, verification and history — is in
+[docs/PROJECT_DOCUMENTATION.md](./docs/PROJECT_DOCUMENTATION.md).
+
 Measured results are in [RESULTS.md](./RESULTS.md); the full report behind them
 is [docs/ACCURACY_REPORT.md](./docs/ACCURACY_REPORT.md), and the edge cases each
 have a named test in [docs/EDGE_CASES.md](./docs/EDGE_CASES.md).
@@ -48,11 +53,16 @@ have a named test in [docs/EDGE_CASES.md](./docs/EDGE_CASES.md).
 
 |            |                                                                                                         |
 | ---------- | ------------------------------------------------------------------------------------------------------- |
-| **Client** | React 19, Vite, TypeScript, Tailwind CSS v4, shadcn/ui, React Router 6, TanStack Query, axios, Recharts |
-| **Server** | Node.js 20+, Express 5, TypeScript, Prisma 7, PostgreSQL, Zod                                           |
-| **Auth**   | JWT access token held in memory + rotating httpOnly refresh cookie, bcrypt, `express-rate-limit`        |
+| **Client** | React 19, Vite, TypeScript, Tailwind CSS v4, shadcn/ui, React Router 7, TanStack Query, axios, Recharts |
+| **Server** | Node.js 20+, Express 5, TypeScript, Prisma 7, PostgreSQL, Zod, SheetJS (Excel import)¹                  |
+| **Auth**   | Google Sign-In or email/password; JWT in memory + rotating httpOnly refresh cookie, bcrypt              |
 | **AI**     | Anthropic SDK (`claude-opus-5`), for merchant categorization fallback and monthly summaries             |
 | **Tests**  | Vitest + Supertest (server), Vitest + Testing Library (client)                                          |
+
+<sub>¹ SheetJS is installed from `cdn.sheetjs.com`, not npm: the `xlsx` package on
+npm stopped at 0.18.5, which has published security advisories. The lockfile
+pins the tarball's checksum, so `npm ci` still verifies exactly what it installs.
+To upgrade, install the newer tarball URL from that site.</sub>
 
 ## Architecture
 
@@ -115,7 +125,12 @@ Open `server/.env` and set two things:
 
 `ANTHROPIC_API_KEY` is optional. Without it everything works except the LLM
 categorization fallback and the written monthly summary, which degrades to a
-generated figures-only recap rather than failing.
+generated figures-only recap rather than failing. With it, every import runs the
+fallback over the merchants the rules could not settle; set
+`AI_CATEGORIZATION=off` to keep merchant names on the server instead. A PDF in a
+layout no built-in reader knows is transcribed by the model from its transaction
+rows alone, with account numbers and other identifiers masked; set
+`AI_STATEMENT_READER=off` to refuse such a file instead.
 
 ### 3. Set up the database
 
@@ -212,7 +227,7 @@ Set these in the platform's environment:
 | `JWT_REFRESH_SECRET` | 32+ random bytes                                                 |
 | `CORS_ORIGIN`        | The deployed client's origin, e.g. `https://fintrack.vercel.app` |
 | `NODE_ENV`           | `production`                                                     |
-| `DEMO_MODE`          | `on` to offer the public demo                                    |
+| `DEMO_MODE`          | `on` only on a demo-only instance; `render.yaml` sets `off`      |
 
 `NODE_ENV=production` is what makes the refresh cookie `Secure; SameSite=None`,
 which is required for it to travel between two different HTTPS origins — and is
@@ -237,19 +252,45 @@ expect to set one variable and redeploy once.
 ### After deploying
 
 ```bash
-curl https://<api-host>/api/health            # {"status":"ok","demo":true}
+curl https://<api-host>/api/health            # {"status":"ok","demo":false}
 ```
+
+Check the service's startup log for `[config]` lines. Each one names a missing
+or risky setting — no mail provider (password reset unavailable), no
+`CORS_ORIGIN`, no Anthropic key, demo mode on — and says what it costs.
 
 Then open the client URL: the landing page reports whether it can reach the API,
 which is the fastest way to tell a CORS or `VITE_API_BASE_URL` mistake from a
 broken build.
 
+### Before you store real statements
+
+- **No `[config]` warnings** in the startup log, or only ones you have decided
+  to accept.
+- **`DEMO_MODE` is off.** A demo belongs on its own instance and database.
+- **Email works.** Request a password reset for your own address and follow the
+  link. Without a mail provider, nobody who forgets a password can get back in.
+- **You have decided what may reach Anthropic.** `AI_CATEGORIZATION` sends
+  merchant names; `AI_STATEMENT_READER` sends the transaction rows of a PDF no
+  built-in reader knows, with identifiers masked. Either can be `off`.
+- **Backups are on, and you have restored one.** They are a setting of the
+  database host, not of this app: check that your Neon or Supabase plan keeps
+  backups or point-in-time restore for long enough, then restore into a scratch
+  database once, so the first restore is not the one that matters.
+- **You know where the logs are.** Every request is logged with an ID, and an
+  unexpected error shows the person a short reference, e.g.
+  `(reference 3f9c2a1b)`. Searching the platform's logs for it finds the
+  request and the stack trace. Query strings and request bodies are never
+  logged.
+
 ## Environment variables
 
 Copy the `.env.example` files and fill them in — never commit a real `.env`.
 
-- `server/.env` — `DATABASE_URL`, `ANTHROPIC_API_KEY`, `JWT_ACCESS_SECRET`,
-  `JWT_REFRESH_SECRET`, `CORS_ORIGIN`, `PORT`, `DEMO_MODE`, `DEMO_USER_EMAIL`
+- `server/.env` — `DATABASE_URL`, `ANTHROPIC_API_KEY`, `AI_CATEGORIZATION`,
+  `AI_STATEMENT_READER`,
+  `JWT_ACCESS_SECRET`, `JWT_REFRESH_SECRET`, `CORS_ORIGIN`, `PORT`, `DEMO_MODE`,
+  `DEMO_USER_EMAIL`
 - `client/.env` — `VITE_API_BASE_URL`
 
 Only `VITE_`-prefixed variables reach the browser bundle. Secrets belong in

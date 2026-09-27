@@ -11,6 +11,9 @@ import {
 import type { Granularity, SeriesPoint } from '@/lib/dashboard';
 import { formatINRCompact } from '@/lib/currency';
 
+/** Axis figures in the ledger's monospace, like every other number. */
+const AXIS_FONT = "'IBM Plex Mono', ui-monospace, monospace";
+
 /**
  * Spend over time — one series, so it takes the sequential hue rather than a
  * categorical slot, and needs no legend: the card title names it.
@@ -43,10 +46,10 @@ export function SpendOverTime({
   return (
     <div className="h-56 w-full sm:h-64">
       <ResponsiveContainer width="100%" height="100%">
-        <AreaChart data={series} margin={{ top: 8, right: 8, bottom: 0, left: 0 }}>
+        <AreaChart data={series} margin={{ top: 8, right: 20, bottom: 0, left: 0 }}>
           <defs>
             <linearGradient id="spendFill" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0%" stopColor="var(--chart-1)" stopOpacity={0.22} />
+              <stop offset="0%" stopColor="var(--chart-1)" stopOpacity={0.18} />
               <stop offset="100%" stopColor="var(--chart-1)" stopOpacity={0.02} />
             </linearGradient>
           </defs>
@@ -58,7 +61,7 @@ export function SpendOverTime({
             stroke="var(--chart-axis)"
             tickLine={false}
             axisLine={false}
-            tick={{ fontSize: 11 }}
+            tick={{ fontSize: 11, fontFamily: AXIS_FONT }}
             minTickGap={24}
           />
           <YAxis
@@ -66,19 +69,17 @@ export function SpendOverTime({
             stroke="var(--chart-axis)"
             tickLine={false}
             axisLine={false}
-            tick={{ fontSize: 11 }}
-            width={56}
+            tick={{ fontSize: 11, fontFamily: AXIS_FONT }}
+            width={60}
           />
           <Tooltip
             cursor={{ stroke: 'var(--chart-axis)', strokeWidth: 1 }}
             content={({ active, payload, label }) => {
               if (!active || !payload?.length) return null;
               return (
-                <div className="bg-popover text-popover-foreground rounded-md border px-3 py-2 text-xs shadow-md">
+                <div className="bg-popover text-popover-foreground rounded-sm border px-3 py-2 text-xs shadow-[0_8px_20px_-12px_rgb(29_28_26/0.4)]">
                   <div className="font-medium">{formatBucket(String(label), granularity)}</div>
-                  <div className="text-muted-foreground tabular-nums">
-                    {formatINRCompact(Number(payload[0].value))}
-                  </div>
+                  <div className="tabular-nums">{formatINRCompact(Number(payload[0].value))}</div>
                 </div>
               );
             }}

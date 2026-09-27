@@ -4,6 +4,7 @@ import {
   categorizeTransactions,
   clearSplit,
   commitTransactions,
+  exportTransactions,
   getReviewQueue,
   getTransaction,
   listTransactions,
@@ -25,10 +26,17 @@ transactionsRouter.post(
   asyncHandler(uploadTransactions),
 );
 
-/** Insert the rows the user confirmed, then run the deterministic engine. */
-transactionsRouter.post('/transactions/commit', asyncHandler(commitTransactions));
+/**
+ * Insert the rows the user confirmed, then categorize: rules first, the model
+ * for what they leave. Limited like a categorization run, because it is one.
+ */
+transactionsRouter.post(
+  '/transactions/commit',
+  categorizeLimiter,
+  asyncHandler(commitTransactions),
+);
 
-/** Re-run the deterministic engine over everything already stored. */
+/** Re-run categorization — rules, then the model — over everything already stored. */
 transactionsRouter.post(
   '/transactions/categorize',
   categorizeLimiter,
@@ -39,6 +47,8 @@ transactionsRouter.post(
 transactionsRouter.get('/review-queue', asyncHandler(getReviewQueue));
 
 transactionsRouter.get('/transactions', asyncHandler(listTransactions));
+/** As a CSV download. Registered before `/:id`, which would otherwise claim "export". */
+transactionsRouter.get('/transactions/export', asyncHandler(exportTransactions));
 transactionsRouter.get('/transactions/:id', asyncHandler(getTransaction));
 
 /** Divide one charge across categories (§8 case 3). */

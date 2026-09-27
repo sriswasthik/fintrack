@@ -1,12 +1,30 @@
 @import 'tailwindcss';
 @import 'tw-animate-css';
+@import '@fontsource-variable/fraunces/opsz.css';
+@import '@fontsource/ibm-plex-sans/400.css';
+@import '@fontsource/ibm-plex-sans/500.css';
+@import '@fontsource/ibm-plex-sans/600.css';
+@import '@fontsource/ibm-plex-mono/400.css';
+@import '@fontsource/ibm-plex-mono/500.css';
 
 @custom-variant dark (&:is(.dark *));
 
+/*
+ * The Ledger theme.
+ *
+ * A bank passbook rather than a SaaS template: cream paper, near-black ink,
+ * hairline rules instead of shadows, a serif for headings and a monospace for
+ * every figure. Two colours carry meaning everywhere — forest green for money
+ * in, brick red for money out — and nothing else is allowed to borrow them.
+ */
 @theme inline {
-  --radius-sm: calc(var(--radius) - 4px);
-  --radius-md: calc(var(--radius) - 2px);
-  --radius-lg: var(--radius);
+  --font-sans: 'IBM Plex Sans', ui-sans-serif, system-ui, sans-serif;
+  --font-display: 'Fraunces Variable', 'Iowan Old Style', Georgia, serif;
+  --font-mono: 'IBM Plex Mono', ui-monospace, 'SFMono-Regular', Menlo, monospace;
+
+  --radius-sm: calc(var(--radius) - 2px);
+  --radius-md: var(--radius);
+  --radius-lg: calc(var(--radius) + 2px);
   --radius-xl: calc(var(--radius) + 4px);
   --color-background: var(--background);
   --color-foreground: var(--foreground);
@@ -26,92 +44,142 @@
   --color-border: var(--border);
   --color-input: var(--input);
   --color-ring: var(--ring);
+  --color-rule: var(--rule);
+  --color-positive: var(--positive);
+  --color-negative: var(--negative);
+  --color-warning: var(--warning);
   --color-chart-1: var(--chart-1);
   --color-chart-2: var(--chart-2);
   --color-chart-3: var(--chart-3);
   --color-chart-4: var(--chart-4);
   --color-chart-5: var(--chart-5);
-  --color-chart-6: var(--chart-6);
   --color-chart-grid: var(--chart-grid);
   --color-chart-axis: var(--chart-axis);
   --color-chart-positive: var(--chart-positive);
 }
 
+/* Paper. */
 :root {
-  --radius: 0.625rem;
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.145 0 0);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.145 0 0);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.145 0 0);
-  --primary: oklch(0.205 0 0);
-  --primary-foreground: oklch(0.985 0 0);
-  --secondary: oklch(0.97 0 0);
-  --secondary-foreground: oklch(0.205 0 0);
-  --muted: oklch(0.97 0 0);
-  --muted-foreground: oklch(0.556 0 0);
-  --accent: oklch(0.97 0 0);
-  --accent-foreground: oklch(0.205 0 0);
-  --destructive: oklch(0.577 0.245 27.325);
-  --border: oklch(0.922 0 0);
-  --input: oklch(0.922 0 0);
-  --ring: oklch(0.708 0 0);
-  /* Categorical series palette. Validated with the data-viz validator against
-     this theme's card surface (#ffffff light / #171717 dark): lightness band,
-     chroma floor, adjacent-pair CVD separation and normal-vision floor all
-     pass in both modes. The slot ORDER is the colourblind-safety mechanism —
-     re-ordering these re-runs the gate, so do not shuffle them casually.
-     Three light slots sit below 3:1 on white, so every chart using them ships
-     direct labels and a table view. */
-  --chart-1: #2a78d6;
-  --chart-2: #eb6834;
-  --chart-3: #1baf7a;
-  --chart-4: #eda100;
-  --chart-5: #e87ba4;
-  --chart-6: #008300;
+  --radius: 0.25rem;
+  --background: #f6f3ec;
+  --foreground: #1d1c1a;
+  --card: #fbf9f4;
+  --card-foreground: #1d1c1a;
+  --popover: #fffdf8;
+  --popover-foreground: #1d1c1a;
+  --primary: #1e5b45;
+  --primary-foreground: #fbf9f4;
+  --secondary: #ece7dc;
+  --secondary-foreground: #1d1c1a;
+  --muted: #efebe2;
+  --muted-foreground: #6b665c;
+  --accent: #e9e3d6;
+  --accent-foreground: #1d1c1a;
+  --destructive: #a8382a;
+  --border: #d9d3c5;
+  --input: #cbc4b3;
+  --ring: #1e5b45;
+  /* The heavy rule under the masthead and above totals, as in a ledger. */
+  --rule: #1d1c1a;
+
+  /* Meaning, not decoration: money in, money out, and "look at this". Every
+     text use clears 4.5:1 on paper and on a card. */
+  --positive: #1e5b45;
+  --negative: #a8382a;
+  --warning: #8a5a06;
+
+  /* Categorical series. Validated with the data-viz validator on the card
+     surface (#fbf9f4): lightness band, chroma floor, adjacent CVD separation
+     (worst ΔE 8.3), normal-vision floor (16.3) and 3:1 contrast all pass. The
+     slot ORDER is part of what passes — re-run the validator before changing
+     it. Slot 1 is also the single-series ink. */
+  --chart-1: #1f6aa8;
+  --chart-2: #6d8a1a;
+  --chart-3: #9b3a78;
+  --chart-4: #a06a08;
+  --chart-5: #1c8a5c;
   /* Chart chrome: recessive by design. */
-  --chart-grid: #e1e0d9;
-  --chart-axis: #898781;
-  --chart-positive: #006300;
+  --chart-grid: #e4ded1;
+  --chart-axis: #857f73;
+  --chart-positive: #1e5b45;
 }
 
+/* Night: the same inks, re-stepped for a dark page rather than inverted. */
 .dark {
-  --background: oklch(0.145 0 0);
-  --foreground: oklch(0.985 0 0);
-  --card: oklch(0.205 0 0);
-  --card-foreground: oklch(0.985 0 0);
-  --popover: oklch(0.269 0 0);
-  --popover-foreground: oklch(0.985 0 0);
-  --primary: oklch(0.922 0 0);
-  --primary-foreground: oklch(0.205 0 0);
-  --secondary: oklch(0.269 0 0);
-  --secondary-foreground: oklch(0.985 0 0);
-  --muted: oklch(0.269 0 0);
-  --muted-foreground: oklch(0.708 0 0);
-  --accent: oklch(0.371 0 0);
-  --accent-foreground: oklch(0.985 0 0);
-  --destructive: oklch(0.704 0.191 22.216);
-  --border: oklch(1 0 0 / 10%);
-  --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.556 0 0);
-  /* The same six hues, re-stepped for the dark surface — not an automatic flip. */
-  --chart-1: #3987e5;
-  --chart-2: #d95926;
-  --chart-3: #199e70;
-  --chart-4: #c98500;
-  --chart-5: #d55181;
-  --chart-6: #008300;
-  --chart-grid: #2c2c2a;
-  --chart-axis: #898781;
-  --chart-positive: #0ca30c;
+  --background: #171613;
+  --foreground: #ece6d9;
+  --card: #1f1d1a;
+  --card-foreground: #ece6d9;
+  --popover: #26241f;
+  --popover-foreground: #ece6d9;
+  --primary: #5fb88e;
+  --primary-foreground: #0f1f18;
+  --secondary: #2a2824;
+  --secondary-foreground: #ece6d9;
+  --muted: #262420;
+  --muted-foreground: #a39c8e;
+  --accent: #2e2b26;
+  --accent-foreground: #ece6d9;
+  --destructive: #e0806b;
+  --border: #36332d;
+  --input: #45413a;
+  --ring: #5fb88e;
+  --rule: #ece6d9;
+
+  --positive: #5fb88e;
+  --negative: #e0806b;
+  --warning: #d6a44a;
+
+  /* Validated on #1f1d1a: worst adjacent CVD ΔE 8.5, normal-vision 18.2. */
+  --chart-1: #4f8fd0;
+  --chart-2: #86a02a;
+  --chart-3: #c0619f;
+  --chart-4: #c08a1c;
+  --chart-5: #27946a;
+  --chart-grid: #2e2b26;
+  --chart-axis: #8c8577;
+  --chart-positive: #5fb88e;
 }
 
 @layer base {
   * {
     @apply border-border outline-ring/50;
   }
-  body {
-    @apply bg-background text-foreground;
+  html {
+    color-scheme: light;
   }
+  html.dark {
+    color-scheme: dark;
+  }
+  body {
+    @apply bg-background text-foreground font-sans antialiased;
+    font-feature-settings: 'kern', 'liga';
+  }
+  h1,
+  h2,
+  h3 {
+    text-wrap: balance;
+  }
+  ::selection {
+    background: color-mix(in srgb, var(--primary) 22%, transparent);
+  }
+  /*
+   * Every figure in the app is already marked `tabular-nums`, so that is where
+   * the ledger's monospace lives: amounts line up in columns, and a number
+   * looks like a number wherever it appears.
+   */
+  .tabular-nums {
+    font-family: var(--font-mono);
+    letter-spacing: -0.01em;
+  }
+}
+
+/* Small caps label above a figure or a section: "SPENT", "RECEIVED". */
+@utility eyebrow {
+  font-family: var(--font-sans);
+  font-size: 0.6875rem;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted-foreground);
 }

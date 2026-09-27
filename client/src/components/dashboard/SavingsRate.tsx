@@ -20,15 +20,13 @@ export function SavingsRate({ savings, className }: { savings: Rate; className?:
   const negative = rate !== null && rate < 0;
 
   return (
-    <div className={cn('bg-card flex flex-col gap-1 rounded-xl border p-4 sm:p-5', className)}>
-      <span className="text-muted-foreground text-xs font-medium tracking-wide uppercase">
-        Savings rate
-      </span>
+    <div className={cn('bg-card flex flex-col gap-1.5 rounded-md border p-4 sm:p-5', className)}>
+      <span className="eyebrow">Savings rate</span>
 
       <span
         className={cn(
-          'text-2xl font-semibold tabular-nums sm:text-3xl',
-          negative && 'text-destructive',
+          'text-[1.5rem] leading-tight font-medium tracking-tight tabular-nums sm:text-[1.875rem]',
+          negative && 'text-negative',
         )}
       >
         {asPercent(rate)}

@@ -28,25 +28,32 @@ const ACCEPTED_MIME_TYPES = new Set([
   'text/csv',
   'application/csv',
   'text/plain',
-  'application/vnd.ms-excel', // what several browsers send for a .csv
+  // An .xls — and what several browsers send for a .csv.
+  'application/vnd.ms-excel',
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
   'application/octet-stream',
 ]);
 
+/** A CSV export, or an Excel one (.xls, .xlsx), which is read as the CSV it holds. */
 export const csvUpload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: MAX_UPLOAD_BYTES, files: 1 },
   fileFilter: (_req, file, callback) => {
-    const looksLikeCsv =
-      ACCEPTED_MIME_TYPES.has(file.mimetype) || /\.csv$/i.test(file.originalname ?? '');
-    if (!looksLikeCsv) {
-      callback(new UnsupportedFileTypeError('Only .csv files can be uploaded'));
+    const looksLikeTable =
+      ACCEPTED_MIME_TYPES.has(file.mimetype) || /\.(csv|xlsx?)$/i.test(file.originalname ?? '');
+    if (!looksLikeTable) {
+      callback(new UnsupportedFileTypeError('Only .csv, .xls and .xlsx files can be uploaded'));
       return;
     }
     callback(null, true);
   },
 });
 
-const PDF_MIME_TYPES = new Set(['application/pdf', 'application/x-pdf', 'application/octet-stream']);
+const PDF_MIME_TYPES = new Set([
+  'application/pdf',
+  'application/x-pdf',
+  'application/octet-stream',
+]);
 
 /**
  * PDF statements.
@@ -64,6 +71,28 @@ export const MAX_PDF_BYTES = 15 * 1024 * 1024;
  * it is not a range, and each file is a PDF parse holding a buffer in memory.
  */
 export const MAX_BATCH_FILES = 24;
+
+/**
+ * Several statements as one import: PDFs, CSV and Excel exports, mixed freely.
+ * The per-file ceiling is the PDF one, the larger of the two.
+ */
+export const batchUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: MAX_PDF_BYTES, files: MAX_BATCH_FILES },
+  fileFilter: (_req, file, callback) => {
+    const accepted =
+      PDF_MIME_TYPES.has(file.mimetype) ||
+      ACCEPTED_MIME_TYPES.has(file.mimetype) ||
+      /\.(pdf|csv|xlsx?)$/i.test(file.originalname ?? '');
+    if (!accepted) {
+      callback(
+        new UnsupportedFileTypeError('Only .pdf, .csv, .xls and .xlsx files can be uploaded here'),
+      );
+      return;
+    }
+    callback(null, true);
+  },
+});
 
 export const pdfUpload = multer({
   storage: multer.memoryStorage(),

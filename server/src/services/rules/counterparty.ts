@@ -292,7 +292,11 @@ export function classifyCounterparty(
     return { type: 'PERSON', reason: 'Reads as a personal name', display };
   }
   if (vpa && vpa.display !== vpa.handle && looksLikePersonalName(vpa.display)) {
-    return { type: 'PERSON', reason: `UPI handle "${vpa.handle}" reads as a personal name`, display };
+    return {
+      type: 'PERSON',
+      reason: `UPI handle "${vpa.handle}" reads as a personal name`,
+      display,
+    };
   }
 
   return { type: 'UNKNOWN', reason: 'No signal either way', display };

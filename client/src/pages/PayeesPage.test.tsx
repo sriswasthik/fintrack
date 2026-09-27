@@ -109,9 +109,9 @@ describe('PayeesPage', () => {
     const row = await screen.findByRole('row', { name: /SAM R/ });
     // Phase 18: paid is a debit, received is a credit, and net carries its own
     // sign — being out of pocket with somebody is the red one.
-    expect(within(row).getByText('\u2212₹4,750.50')).toHaveClass('text-destructive');
-    expect(within(row).getByText('+₹3,900.25')).toHaveClass('text-chart-positive');
-    expect(within(row).getByText('\u2212₹850.25')).toHaveClass('text-destructive');
+    expect(within(row).getByText('\u2212₹4,750.50')).toHaveClass('text-negative');
+    expect(within(row).getByText('+₹3,900.25')).toHaveClass('text-positive');
+    expect(within(row).getByText('\u2212₹850.25')).toHaveClass('text-negative');
   });
 
   it('colours a payee you owe money to the other way round', async () => {
@@ -119,7 +119,7 @@ describe('PayeesPage', () => {
     renderPage();
 
     const row = await screen.findByRole('row', { name: /SAM R/ });
-    expect(within(row).getByText('+₹800.00')).toHaveClass('text-chart-positive');
+    expect(within(row).getByText('+₹800.00')).toHaveClass('text-positive');
   });
 
   it('shows a settled round trip as a net of zero rather than hiding it', async () => {
@@ -131,8 +131,8 @@ describe('PayeesPage', () => {
     expect(within(row).getByText('\u2212₹6,000.00')).toBeInTheDocument();
     expect(within(row).getByText('+₹6,000.00')).toBeInTheDocument();
     const net = within(row).getByText('₹0.00');
-    expect(net).not.toHaveClass('text-destructive');
-    expect(net).not.toHaveClass('text-chart-positive');
+    expect(net).not.toHaveClass('text-negative');
+    expect(net).not.toHaveClass('text-positive');
   });
 
   it('labels a person and a business differently', async () => {

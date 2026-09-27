@@ -23,6 +23,9 @@ import {
   verifyPassword,
 } from '../services/auth/passwords';
 import { DEMO_SESSION_TTL_SECONDS, demoModeEnabled, demoUserEmail } from '../services/auth/demo';
+import { consumePasswordReset, createPasswordReset } from '../services/auth/passwordReset';
+import { sendPasswordResetEmail } from '../services/email/passwordReset';
+import { emailConfigured } from '../services/email/send';
 import { sendWelcomeEmail } from '../services/email/welcome';
 import {
   InvalidGoogleTokenError,
@@ -39,12 +42,16 @@ import {
   verifyRefreshToken,
 } from '../services/auth/tokens';
 
+const emailSchema = z.string().trim().toLowerCase().email('A valid email address is required');
+
+export const newPasswordSchema = z
+  .string()
+  .min(MIN_PASSWORD_LENGTH, `Password must be at least ${MIN_PASSWORD_LENGTH} characters`)
+  .max(200);
+
 const credentialsSchema = z.object({
-  email: z.string().trim().toLowerCase().email('A valid email address is required'),
-  password: z
-    .string()
-    .min(MIN_PASSWORD_LENGTH, `Password must be at least ${MIN_PASSWORD_LENGTH} characters`)
-    .max(200),
+  email: emailSchema,
+  password: newPasswordSchema,
 });
 
 const registerSchema = credentialsSchema.extend({
@@ -71,7 +78,8 @@ function sessionBody(user: SessionUser, accessToken: string, options: { demo?: b
   };
 }
 
-async function startSession(res: Response, user: SessionUser) {
+/** Issues a refresh cookie and returns the session body. Shared with the account routes. */
+export async function startSession(res: Response, user: SessionUser) {
   const refresh = issueRefreshToken(user.id);
 
   await getPrisma().refreshToken.create({
@@ -259,10 +267,97 @@ export const logout: RequestHandler = async (req, res) => {
 export const me: RequestHandler = async (req, res) => {
   const user = await getPrisma().user.findUnique({
     where: { id: req.userId },
-    select: { id: true, email: true, name: true, createdAt: true },
+    select: {
+      id: true,
+      email: true,
+      name: true,
+      createdAt: true,
+      picture: true,
+      passwordHash: true,
+      googleId: true,
+    },
   });
   if (!user) throw new HttpError(401, 'Session no longer valid');
-  res.json({ user });
+  const { passwordHash, googleId, ...profile } = user;
+  // Whether each way in exists — never the values. The settings page needs to
+  // know whether "change password" can ask for the current one.
+  res.json({
+    user: { ...profile, hasPassword: passwordHash !== null, hasGoogle: googleId !== null },
+  });
+};
+
+const RESET_ACCEPTED =
+  'If that address has an account, a link to reset its password is on its way. It works for an hour.';
+
+/**
+ * POST /api/auth/forgot-password
+ *
+ * Always the same 202 and the same words, whether or not the address has an
+ * account — this endpoint must not become a way to ask which addresses do.
+ * The email goes in the background for the same reason (see
+ * `sendPasswordResetEmail`). A Google-only account is sent a link too: that
+ * is how somebody who signed up with Google gives themselves a password.
+ */
+export const forgotPassword: RequestHandler = async (req, res) => {
+  const { email } = z.object({ email: emailSchema }).parse(req.body);
+
+  // With no mail provider, "a link is on its way" would be a promise nothing
+  // keeps, and the person would wait for an email that never comes. Saying so
+  // is the same answer for every address, so it tells nobody which ones have
+  // an account. Outside production the link goes to the console instead (see
+  // `sendPasswordResetEmail`), so the flow can still be tried locally.
+  if (!emailConfigured() && process.env.NODE_ENV === 'production') {
+    throw new HttpError(
+      503,
+      'Password reset by email is not available on this server yet. Sign in another way, or ask whoever runs it.',
+    );
+  }
+
+  const user = await getPrisma().user.findUnique({
+    where: { email },
+    select: { id: true, email: true, name: true },
+  });
+
+  // The shared demo account is never resettable: whoever held a link to it
+  // would own what every visitor sees.
+  if (user && user.email !== demoUserEmail()) {
+    const token = await createPasswordReset(getPrisma(), user.id);
+    sendPasswordResetEmail(user, token);
+  }
+
+  res.status(202).json({ message: RESET_ACCEPTED });
+};
+
+const resetSchema = z.object({
+  token: z.string().min(1, 'The reset link is missing its token').max(200),
+  password: newPasswordSchema,
+});
+
+/**
+ * POST /api/auth/reset-password
+ *
+ * Spends the link, sets the password, and ends every existing session: a
+ * reset is often somebody taking an account back, and a session the other
+ * party still holds should not survive it. The person then signs in fresh.
+ */
+export const resetPassword: RequestHandler = async (req, res) => {
+  const { token, password } = resetSchema.parse(req.body);
+
+  const userId = await consumePasswordReset(getPrisma(), token);
+  if (!userId) {
+    throw new HttpError(400, 'This reset link is invalid, already used, or has expired');
+  }
+
+  const passwordHash = await hashPassword(password);
+  await getPrisma().$transaction([
+    getPrisma().user.update({ where: { id: userId }, data: { passwordHash } }),
+    getPrisma().refreshToken.updateMany({
+      where: { userId, revokedAt: null },
+      data: { revokedAt: new Date() },
+    }),
+  ]);
+
+  res.json({ message: 'Your password has been changed. Sign in with the new one.' });
 };
 
 /**

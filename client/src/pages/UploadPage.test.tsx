@@ -2,8 +2,10 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { ReactNode } from 'react';
+import { MemoryRouter } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { createAccount } from '@/lib/accounts';
 import { UploadPage } from '@/pages/UploadPage';
 import type * as StatementsModule from '@/lib/statements';
 import type { BatchPreview, BatchRow } from '@/lib/statements';
@@ -24,6 +26,11 @@ vi.mock('@/lib/transactions', () => ({
   commitImport: vi.fn(),
 }));
 
+vi.mock('@/lib/accounts', async (importOriginal) => ({
+  ...(await importOriginal<object>()),
+  createAccount: vi.fn(),
+}));
+
 vi.mock('@/lib/statements', async (importOriginal) => {
   const actual = await importOriginal<typeof StatementsModule>();
   return {
@@ -35,6 +42,7 @@ vi.mock('@/lib/statements', async (importOriginal) => {
 });
 
 const fetchAccountsMock = vi.mocked(fetchAccounts);
+const createAccountMock = vi.mocked(createAccount);
 const inspectStatementMock = vi.mocked(inspectStatement);
 const parseStatementMock = vi.mocked(parseStatement);
 const parseStatementBatchMock = vi.mocked(parseStatementBatch);
@@ -91,7 +99,9 @@ const PREVIEW: UploadPreview = {
 function renderPage() {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   const wrapper = ({ children }: { children: ReactNode }) => (
-    <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+    <QueryClientProvider client={queryClient}>
+      <MemoryRouter>{children}</MemoryRouter>
+    </QueryClientProvider>
   );
   return render(<UploadPage />, { wrapper });
 }
@@ -103,7 +113,7 @@ async function chooseAccountAndFile(user: ReturnType<typeof userEvent.setup>) {
   const file = new File(['date,description,amount\n2026-03-01,X,1.00\n'], 'export.csv', {
     type: 'text/csv',
   });
-  await user.upload(screen.getByLabelText('CSV or PDF file'), file);
+  await user.upload(screen.getByLabelText('CSV, Excel or PDF file'), file);
 }
 
 beforeEach(() => {
@@ -187,6 +197,17 @@ describe('UploadPage', () => {
     expect(commitImportMock.mock.calls[0][0].rows).toHaveLength(3);
   });
 
+  it('records the file name on the import, for the history', async () => {
+    const user = userEvent.setup();
+    renderPage();
+    await chooseAccountAndFile(user);
+    await user.click(screen.getByRole('button', { name: 'Upload' }));
+    await user.click(await screen.findByRole('button', { name: 'Confirm Import' }));
+
+    await waitFor(() => expect(commitImportMock).toHaveBeenCalledTimes(1));
+    expect(commitImportMock.mock.calls[0][0].fileNames).toEqual(['export.csv']);
+  });
+
   it('reports the result once the import completes', async () => {
     const user = userEvent.setup();
     renderPage();
@@ -196,6 +217,100 @@ describe('UploadPage', () => {
 
     expect(await screen.findByText('Import complete')).toBeInTheDocument();
     expect(screen.getByText(/Imported 2 transaction\(s\), skipped 1\./)).toBeInTheDocument();
+  });
+
+  it('says when salary credits were recognised as income', async () => {
+    commitImportMock.mockResolvedValue({
+      accountId: 'acct_1',
+      imported: 6,
+      skipped: 0,
+      categorization: { uncategorized: 0 },
+      salary: { payers: ['NORTHWIND LABS'], categorized: 3 },
+      ai: { status: 'off' },
+    });
+
+    const user = userEvent.setup();
+    renderPage();
+    await chooseAccountAndFile(user);
+    await user.click(screen.getByRole('button', { name: 'Upload' }));
+    await user.click(await screen.findByRole('button', { name: 'Confirm Import' }));
+
+    expect(
+      await screen.findByText('Recognised 3 salary credit(s) from NORTHWIND LABS as income.'),
+    ).toBeInTheDocument();
+  });
+
+  it('says what the AI categorized and what is left for review', async () => {
+    commitImportMock.mockResolvedValue({
+      accountId: 'acct_1',
+      imported: 2,
+      skipped: 1,
+      categorization: { uncategorized: 5 },
+      ai: {
+        status: 'done',
+        categorized: 3,
+        lowConfidence: 1,
+        skippedPeople: 1,
+        stillUnresolved: 2,
+      },
+    });
+
+    const user = userEvent.setup();
+    renderPage();
+    await chooseAccountAndFile(user);
+    await user.click(screen.getByRole('button', { name: 'Upload' }));
+    await user.click(await screen.findByRole('button', { name: 'Confirm Import' }));
+
+    expect(
+      await screen.findByText(
+        'AI categorized 3 transaction(s) the rules could not, 1 of them tentatively.',
+      ),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(/1 payment\(s\) to people were not sent to the AI/),
+    ).toBeInTheDocument();
+    expect(screen.getByText(/2 transaction\(s\) still need a category/)).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Review them' })).toHaveAttribute('href', '/review');
+  });
+
+  it('says so when the server has no AI configured', async () => {
+    commitImportMock.mockResolvedValue({
+      accountId: 'acct_1',
+      imported: 2,
+      skipped: 0,
+      categorization: { uncategorized: 4 },
+      ai: { status: 'unavailable', reason: 'AI categorization is not configured on this server.' },
+    });
+
+    const user = userEvent.setup();
+    renderPage();
+    await chooseAccountAndFile(user);
+    await user.click(screen.getByRole('button', { name: 'Upload' }));
+    await user.click(await screen.findByRole('button', { name: 'Confirm Import' }));
+
+    expect(
+      await screen.findByText('AI categorization is not configured on this server.'),
+    ).toBeInTheDocument();
+    expect(screen.getByText(/4 transaction\(s\) still need a category/)).toBeInTheDocument();
+  });
+
+  it('reports only the rules when the AI pass is off', async () => {
+    commitImportMock.mockResolvedValue({
+      accountId: 'acct_1',
+      imported: 2,
+      skipped: 0,
+      categorization: { uncategorized: 0 },
+      ai: { status: 'off' },
+    });
+
+    const user = userEvent.setup();
+    renderPage();
+    await chooseAccountAndFile(user);
+    await user.click(screen.getByRole('button', { name: 'Upload' }));
+    await user.click(await screen.findByRole('button', { name: 'Confirm Import' }));
+
+    expect(await screen.findByText('Everything is categorized.')).toBeInTheDocument();
+    expect(screen.queryByText(/AI/)).not.toBeInTheDocument();
   });
 
   it('shows the column-mapping form when the server does not recognise the headers', async () => {
@@ -215,6 +330,81 @@ describe('UploadPage', () => {
 
     expect(await screen.findByText('Map the columns')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Parse with this mapping' })).toBeDisabled();
+  });
+
+  it('maps separate debit and credit columns, which is how Indian banks export', async () => {
+    uploadCsvMock.mockResolvedValueOnce({
+      status: 'needs-mapping',
+      fileName: 'bank.csv',
+      headers: ['On', 'Particulars', 'Out', 'In'],
+      sampleRows: [],
+      requiredFields: ['date', 'description', 'amount | debit + credit'],
+      knownPresets: [],
+    });
+    uploadCsvMock.mockResolvedValueOnce(PREVIEW);
+
+    const user = userEvent.setup();
+    renderPage();
+    await chooseAccountAndFile(user);
+    await user.click(screen.getByRole('button', { name: 'Upload' }));
+    await screen.findByText('Map the columns');
+
+    const pick = async (label: string, option: string) => {
+      await user.click(screen.getByLabelText(label));
+      await user.click(await screen.findByRole('option', { name: option }));
+    };
+    await pick('Date', 'On');
+    await pick('Description', 'Particulars');
+    await pick('Money out (debit / withdrawal)', 'Out');
+    await pick('Money in (credit / deposit)', 'In');
+    await pick('Dates are written', 'Day first (31/01/2026)');
+    await user.click(screen.getByRole('button', { name: 'Parse with this mapping' }));
+
+    await waitFor(() => expect(uploadCsvMock).toHaveBeenCalledTimes(2));
+    expect(uploadCsvMock.mock.calls[1][0].mapping).toEqual({
+      date: 'On',
+      description: 'Particulars',
+      debit: 'Out',
+      credit: 'In',
+      amountSign: 'debit-positive',
+      dateOrder: 'dmy',
+    });
+  });
+
+  it('says when the day/month order was assumed, and re-reads it the other way on request', async () => {
+    uploadCsvMock.mockResolvedValue({
+      ...PREVIEW,
+      dateOrder: { order: 'dmy', basis: 'default' },
+    });
+
+    const user = userEvent.setup();
+    renderPage();
+    await chooseAccountAndFile(user);
+    await user.click(screen.getByRole('button', { name: 'Upload' }));
+
+    const notice = await screen.findByRole('status');
+    expect(notice).toHaveTextContent(/day-first or month-first/);
+    expect(notice).toHaveTextContent(/day first \(03\/05\/2026 is 3 May\)/);
+
+    await user.click(within(notice).getByRole('button', { name: 'Read month first instead' }));
+
+    await waitFor(() => expect(uploadCsvMock).toHaveBeenCalledTimes(2));
+    expect(uploadCsvMock.mock.calls[1][0].mapping).toMatchObject({
+      ...PREVIEW.mapping,
+      dateOrder: 'mdy',
+    });
+  });
+
+  it('says nothing about date order when the file proved it', async () => {
+    uploadCsvMock.mockResolvedValue({ ...PREVIEW, dateOrder: { order: 'dmy', basis: 'file' } });
+
+    const user = userEvent.setup();
+    renderPage();
+    await chooseAccountAndFile(user);
+    await user.click(screen.getByRole('button', { name: 'Upload' }));
+
+    await screen.findByRole('button', { name: 'Confirm Import' });
+    expect(screen.queryByText(/Dates were read/)).not.toBeInTheDocument();
   });
 
   it('surfaces a server error', async () => {
@@ -244,7 +434,7 @@ const PDF_PREVIEW: UploadPreview = { ...PREVIEW, fileName: 'statement.pdf', rows
 async function choosePdf(user: ReturnType<typeof userEvent.setup>, file = pdf()) {
   await user.click(screen.getByLabelText('Account'));
   await user.click(await screen.findByRole('option', { name: 'Everyday Checking' }));
-  await user.upload(screen.getByLabelText('CSV or PDF file'), file);
+  await user.upload(screen.getByLabelText('CSV, Excel or PDF file'), file);
 }
 
 describe('PDF statements', () => {
@@ -324,7 +514,7 @@ describe('PDF statements', () => {
     await user.click(screen.getByLabelText('Account'));
     await user.click(await screen.findByRole('option', { name: 'Everyday Checking' }));
     await user.upload(
-      screen.getByLabelText('CSV or PDF file'),
+      screen.getByLabelText('CSV, Excel or PDF file'),
       new File(['date,description,amount'], 'export.csv', { type: 'text/csv' }),
     );
 
@@ -343,7 +533,7 @@ describe('PDF statements', () => {
     await user.type(await screen.findByLabelText('Statement password'), 'first-file-password');
 
     inspectStatementMock.mockResolvedValue({ requiresPassword: false });
-    await user.upload(screen.getByLabelText('CSV or PDF file'), pdf('another.pdf'));
+    await user.upload(screen.getByLabelText('CSV, Excel or PDF file'), pdf('another.pdf'));
 
     expect(await screen.findByText(/not password-protected/i)).toBeInTheDocument();
     expect(screen.queryByLabelText('Statement password')).not.toBeInTheDocument();
@@ -431,18 +621,18 @@ describe('statement period', () => {
     const user = userEvent.setup();
     renderPage();
 
-    const single = screen.getByLabelText('CSV or PDF file');
+    const single = screen.getByLabelText('CSV, Excel or PDF file');
     expect(single).not.toHaveAttribute('multiple');
 
     await choosePeriod(user, 'Quarterly');
-    expect(await screen.findByLabelText('CSV or PDF files')).toHaveAttribute('multiple');
+    expect(await screen.findByLabelText('CSV, Excel or PDF files')).toHaveAttribute('multiple');
   });
 
   it('offers a custom range too', async () => {
     const user = userEvent.setup();
     renderPage();
     await choosePeriod(user, 'Custom range');
-    expect(await screen.findByLabelText('CSV or PDF files')).toHaveAttribute('multiple');
+    expect(await screen.findByLabelText('CSV, Excel or PDF files')).toHaveAttribute('multiple');
   });
 
   it('sends every chosen file as one batch', async () => {
@@ -451,7 +641,7 @@ describe('statement period', () => {
     await chooseAccount(user);
     await choosePeriod(user, 'Quarterly');
 
-    await user.upload(screen.getByLabelText('CSV or PDF files'), [
+    await user.upload(screen.getByLabelText('CSV, Excel or PDF files'), [
       pdfFile('april.pdf'),
       pdfFile('may.pdf'),
       pdfFile('june.pdf'),
@@ -464,6 +654,40 @@ describe('statement period', () => {
     expect(parseStatementMock).not.toHaveBeenCalled();
   });
 
+  it('takes CSV and Excel exports in a batch, and shows what it assumed about one', async () => {
+    parseStatementBatchMock.mockResolvedValue({
+      ...BATCH,
+      files: [
+        BATCH.files[0],
+        {
+          ...BATCH.files[1],
+          fileName: 'may.csv',
+          source: 'unknown',
+          sourceLabel: 'CSV — Separate debit and credit columns',
+          via: 'table',
+          message: 'Dates were read day first (03/05 is 3 May); nothing in the file proved it.',
+        },
+      ],
+    });
+    const user = userEvent.setup();
+    renderPage();
+    await chooseAccount(user);
+    await choosePeriod(user, 'Quarterly');
+
+    await user.upload(screen.getByLabelText('CSV, Excel or PDF files'), [
+      pdfFile('april.pdf'),
+      new File(['Date,Description,Amount\n'], 'may.csv', { type: 'text/csv' }),
+    ]);
+    await user.click(screen.getByRole('button', { name: 'Upload' }));
+
+    expect(await screen.findByText('CSV — Separate debit and credit columns')).toBeInTheDocument();
+    expect(screen.getByText(/Dates were read day first/)).toBeInTheDocument();
+    expect(parseStatementBatchMock.mock.calls[0][0].files.map((f: File) => f.name)).toEqual([
+      'april.pdf',
+      'may.csv',
+    ]);
+  });
+
   it('does not inspect each file up front when several are chosen', async () => {
     // With one file the answer decides whether to show a password box before
     // uploading. With several, the batch preview answers it per file instead.
@@ -472,7 +696,10 @@ describe('statement period', () => {
     await chooseAccount(user);
     await choosePeriod(user, 'Quarterly');
 
-    await user.upload(screen.getByLabelText('CSV or PDF files'), [pdfFile('a.pdf'), pdfFile('b.pdf')]);
+    await user.upload(screen.getByLabelText('CSV, Excel or PDF files'), [
+      pdfFile('a.pdf'),
+      pdfFile('b.pdf'),
+    ]);
 
     expect(inspectStatementMock).not.toHaveBeenCalled();
   });
@@ -489,7 +716,7 @@ describe('the combined batch preview', () => {
     renderPage();
     await chooseAccount(user);
     await choosePeriod(user, 'Quarterly');
-    await user.upload(screen.getByLabelText('CSV or PDF files'), [
+    await user.upload(screen.getByLabelText('CSV, Excel or PDF files'), [
       pdfFile('april.pdf'),
       pdfFile('may.pdf'),
     ]);
@@ -567,5 +794,54 @@ describe('the combined batch preview', () => {
 
     await waitFor(() => expect(parseStatementBatchMock).toHaveBeenCalledTimes(2));
     expect(parseStatementBatchMock.mock.calls[1][0].passwords).toEqual({ 1: 'hunter2' });
+  });
+});
+
+describe('a new user with no bank accounts', () => {
+  beforeEach(() => {
+    fetchAccountsMock.mockResolvedValue([]);
+    createAccountMock.mockResolvedValue({ id: 'acct_new', name: 'HDFC Savings', type: 'CHECKING' });
+  });
+
+  it('is asked to add one before anything else — the page used to be a dead end', async () => {
+    renderPage();
+    expect(await screen.findByText('First, add your bank account')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Add account and continue' })).toBeDisabled();
+  });
+
+  it('adds the account and selects it for the import', async () => {
+    const user = userEvent.setup();
+    renderPage();
+
+    await user.type(await screen.findByLabelText('Account name'), 'HDFC Savings');
+    // The list refetches after the create; by then it holds the new account.
+    fetchAccountsMock.mockResolvedValue([
+      { id: 'acct_new', name: 'HDFC Savings', type: 'CHECKING' },
+    ]);
+    await user.click(screen.getByRole('button', { name: 'Add account and continue' }));
+
+    await waitFor(() =>
+      expect(createAccountMock.mock.calls[0][0]).toEqual({
+        name: 'HDFC Savings',
+        type: 'CHECKING',
+      }),
+    );
+    await waitFor(() =>
+      expect(screen.queryByText('First, add your bank account')).not.toBeInTheDocument(),
+    );
+    expect(screen.getByLabelText('Account')).toHaveTextContent('HDFC Savings');
+  });
+
+  it('says why the server refused, such as a name already taken', async () => {
+    const user = userEvent.setup();
+    createAccountMock.mockRejectedValue({
+      response: { data: { error: 'You already have an account called "HDFC Savings"' } },
+    });
+    renderPage();
+
+    await user.type(await screen.findByLabelText('Account name'), 'HDFC Savings');
+    await user.click(screen.getByRole('button', { name: 'Add account and continue' }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('already have an account');
   });
 });

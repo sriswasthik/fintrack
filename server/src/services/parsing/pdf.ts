@@ -159,10 +159,7 @@ function isTextItem(item: unknown): item is PdfJsTextItem {
  * input was wrong, and answering the second with the first is how a person ends
  * up typing the same wrong password three times.
  */
-export async function extractPdfText(
-  buffer: Buffer,
-  password?: string,
-): Promise<TextItemsByPage> {
+export async function extractPdfText(buffer: Buffer, password?: string): Promise<TextItemsByPage> {
   const { document, task } = await open(buffer, password);
 
   try {
