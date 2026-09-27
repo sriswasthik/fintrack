@@ -67,7 +67,11 @@ function Nav() {
           <span className="font-display text-[1.375rem] leading-none font-semibold tracking-tight">
             FinTrack
           </span>
-          <span className="eyebrow hidden md:inline">Personal ledger</span>
+          {/* With the pages beside it on a wide screen there is no room for the
+              tagline too; everywhere else there is. */}
+          <span className={cn('eyebrow hidden md:inline', user && 'xl:hidden')}>
+            Personal ledger
+          </span>
         </Link>
 
         {/* The app's pages are only reachable with a session, so offering them
@@ -90,7 +94,7 @@ function Nav() {
           <ThemeToggle />
           {user ? (
             <>
-              <span className="text-muted-foreground hidden max-w-48 truncate px-1 text-sm lg:inline">
+              <span className="text-muted-foreground hidden max-w-48 truncate px-1 text-sm lg:inline xl:hidden">
                 {isDemo ? 'Sample account' : user.email}
               </span>
               <NavLink to="/settings" className={(state) => cn(linkClass(state), 'px-1')}>
