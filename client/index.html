@@ -4,7 +4,29 @@
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>FinTrack</title>
+    <meta
+      name="description"
+      content="FinTrack reads Indian bank statements — CSV, Excel or PDF — categorizes every transaction and shows you where the month went."
+    />
+    <meta name="theme-color" content="#f6f3ec" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#171613" media="(prefers-color-scheme: dark)" />
+    <title>FinTrack — where your money actually went</title>
+    <script>
+      // Apply the saved theme before the first paint (see src/lib/theme.ts).
+      (function () {
+        var theme = null;
+        try {
+          theme = localStorage.getItem('fintrack-theme');
+        } catch (e) {}
+        if (theme !== 'light' && theme !== 'dark') {
+          theme =
+            window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches
+              ? 'dark'
+              : 'light';
+        }
+        if (theme === 'dark') document.documentElement.classList.add('dark');
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>

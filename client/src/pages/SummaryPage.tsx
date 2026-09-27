@@ -72,7 +72,7 @@ function FiguresBehindIt({ stats }: { stats: MonthlyStats }) {
               <dt className="text-muted-foreground text-xs font-medium tracking-wide uppercase">
                 {figure.label}
               </dt>
-              <dd className="text-lg font-semibold tabular-nums">{figure.value}</dd>
+              <dd className="text-lg font-medium tracking-tight tabular-nums">{figure.value}</dd>
               {figure.change !== undefined && figure.change !== null && (
                 <dd className="text-muted-foreground text-xs tabular-nums">
                   {signedPercent(figure.change)} vs {stats.previousMonthLabel}
@@ -190,7 +190,7 @@ export function SummaryPage() {
     <main className="mx-auto flex max-w-4xl flex-col gap-5 p-4 sm:gap-6 sm:p-6">
       <header className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div className="space-y-1">
-          <h1 className="text-2xl font-semibold tracking-tight">Monthly summary</h1>
+          <h1 className="font-display text-3xl font-semibold tracking-tight">Monthly summary</h1>
           <p className="text-muted-foreground text-sm">{monthLabel(month)}</p>
         </div>
 

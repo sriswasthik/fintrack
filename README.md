@@ -49,9 +49,9 @@ have a named test in [docs/EDGE_CASES.md](./docs/EDGE_CASES.md).
 
 |            |                                                                                                         |
 | ---------- | ------------------------------------------------------------------------------------------------------- |
-| **Client** | React 19, Vite, TypeScript, Tailwind CSS v4, shadcn/ui, React Router 6, TanStack Query, axios, Recharts |
+| **Client** | React 19, Vite, TypeScript, Tailwind CSS v4, shadcn/ui, React Router 7, TanStack Query, axios, Recharts |
 | **Server** | Node.js 20+, Express 5, TypeScript, Prisma 7, PostgreSQL, Zod, SheetJS (Excel import)¹                  |
-| **Auth**   | JWT access token held in memory + rotating httpOnly refresh cookie, bcrypt, `express-rate-limit`        |
+| **Auth**   | Google Sign-In or email/password; JWT in memory + rotating httpOnly refresh cookie, bcrypt              |
 | **AI**     | Anthropic SDK (`claude-opus-5`), for merchant categorization fallback and monthly summaries             |
 | **Tests**  | Vitest + Supertest (server), Vitest + Testing Library (client)                                          |
 

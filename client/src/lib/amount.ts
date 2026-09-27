@@ -29,6 +29,6 @@ export const AMOUNT_STYLE: Record<
 > = {
   // U+2212 MINUS SIGN, not a hyphen: it matches the digits in weight and width,
   // which a hyphen does not in a column of tabular figures.
-  debit: { className: 'text-destructive', sign: '−', label: 'debit' },
-  credit: { className: 'text-chart-positive', sign: '+', label: 'credit' },
+  debit: { className: 'text-negative', sign: '−', label: 'debit' },
+  credit: { className: 'text-positive', sign: '+', label: 'credit' },
 };

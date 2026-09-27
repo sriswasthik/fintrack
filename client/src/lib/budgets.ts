@@ -10,9 +10,9 @@ export type BudgetStatus = 'ok' | 'warning' | 'over';
  * to look at, not an error.
  */
 export const BUDGET_STATUS: Record<BudgetStatus, { label: string; fill: string }> = {
-  ok: { label: 'On track', fill: 'bg-[var(--chart-1)]' },
-  warning: { label: 'Nearly there', fill: 'bg-[var(--chart-4)]' },
-  over: { label: 'Over budget', fill: 'bg-[var(--chart-2)]' },
+  ok: { label: 'On track', fill: 'bg-positive' },
+  warning: { label: 'Nearly there', fill: 'bg-warning' },
+  over: { label: 'Over budget', fill: 'bg-negative' },
 };
 
 /** "2026-09" for the month `date` falls in, by the local calendar. */

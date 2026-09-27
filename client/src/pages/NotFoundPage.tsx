@@ -14,7 +14,7 @@ export function NotFoundPage() {
   return (
     <main className="mx-auto flex min-h-[60svh] max-w-md flex-col items-center justify-center gap-4 p-6 text-center">
       <p className="text-muted-foreground text-sm font-medium">404</p>
-      <h1 className="text-2xl font-semibold tracking-tight">There is no page here</h1>
+      <h1 className="font-display text-3xl font-semibold tracking-tight">There is no page here</h1>
       <p className="text-muted-foreground text-sm break-all">
         Nothing lives at <code className="font-mono">{location.pathname}</code>. The link may be
         old, or mistyped.

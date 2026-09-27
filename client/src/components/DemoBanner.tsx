@@ -16,10 +16,13 @@ export function DemoBanner() {
   if (!isDemo) return null;
 
   return (
-    <div className="bg-muted/60 border-b">
-      <div className="text-muted-foreground mx-auto flex max-w-6xl flex-wrap items-center gap-x-3 gap-y-1 px-4 py-2 text-sm">
+    <div className="bg-secondary border-b">
+      <div className="text-muted-foreground mx-auto flex max-w-6xl flex-wrap items-center gap-x-3 gap-y-1 px-4 py-2 text-sm sm:px-6">
         <span>
-          You are viewing a <strong className="text-foreground">read-only sample account</strong>{' '}
+          <span className="eyebrow text-foreground mr-2">Demo</span>
+          You are viewing a <strong className="text-foreground">
+            read-only sample account
+          </strong>{' '}
           with generated data.
         </span>
         <div className="ml-auto flex items-center gap-2">

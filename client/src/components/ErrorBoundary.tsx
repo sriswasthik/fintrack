@@ -52,7 +52,9 @@ export class ErrorBoundary extends Component<Props, State> {
         role="alert"
         className="mx-auto flex min-h-[60svh] max-w-md flex-col items-center justify-center gap-4 p-6 text-center"
       >
-        <h1 className="text-2xl font-semibold tracking-tight">This page hit a problem</h1>
+        <h1 className="font-display text-3xl font-semibold tracking-tight">
+          This page hit a problem
+        </h1>
         <p className="text-muted-foreground text-sm">
           Something went wrong while showing it. Your data is safe — nothing was changed. Try again,
           or head to another page.

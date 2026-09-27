@@ -2,7 +2,7 @@ import { useState, type FormEvent } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { BudgetBar } from '@/components/BudgetBar';
-import { StatTile } from '@/components/dashboard/StatTile';
+import { StatSheet, StatTile } from '@/components/dashboard/StatTile';
 import { EmptyState, ErrorState, Loading } from '@/components/states';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -56,10 +56,10 @@ export function BudgetsPage() {
   const available = BUDGETABLE_CATEGORIES.filter((c) => !taken.has(c));
 
   return (
-    <main className="mx-auto flex max-w-5xl flex-col gap-6 p-4 sm:p-6">
+    <main className="mx-auto flex max-w-6xl flex-col gap-6 p-4 sm:p-6">
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div className="space-y-1">
-          <h1 className="text-2xl font-semibold tracking-tight">Budgets</h1>
+          <h1 className="font-display text-3xl font-semibold tracking-tight">Budgets</h1>
           <p className="text-muted-foreground text-sm">
             A monthly limit per category, measured against exactly what the dashboard counts as
             spending.
@@ -95,7 +95,7 @@ export function BudgetsPage() {
 
       {data && (
         <>
-          <section className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
+          <StatSheet>
             <StatTile label="Budgeted" value={formatINR(data.totals.budgeted)} />
             <StatTile label="Spent against budgets" value={formatINR(data.totals.spent)} />
             <StatTile
@@ -112,7 +112,7 @@ export function BudgetsPage() {
               value={formatINR(data.totals.unbudgetedSpend)}
               hint="Categories you have not set a limit for"
             />
-          </section>
+          </StatSheet>
 
           <Card>
             <CardHeader>

@@ -3,7 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 
 import { BudgetsPanel } from '@/components/dashboard/BudgetsPanel';
-import { CategoryDonut } from '@/components/dashboard/CategoryDonut';
+import { CategoryBars } from '@/components/dashboard/CategoryBars';
 import { CategoryDrilldown } from '@/components/dashboard/CategoryDrilldown';
 import { CommitmentsPanel } from '@/components/dashboard/CommitmentsPanel';
 import { InsightsPanel } from '@/components/dashboard/InsightsPanel';
@@ -11,7 +11,7 @@ import { SavingsRate } from '@/components/dashboard/SavingsRate';
 import { RangeTotals } from '@/components/RangeTotals';
 import { EmptyState, ErrorState, Loading } from '@/components/states';
 import { SpendOverTime } from '@/components/dashboard/SpendOverTime';
-import { StatTile } from '@/components/dashboard/StatTile';
+import { StatSheet, StatTile } from '@/components/dashboard/StatTile';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import {
@@ -34,6 +34,18 @@ import { fetchDashboard, type Granularity } from '@/lib/dashboard';
 import { fetchIndiaInsights } from '@/lib/india';
 import { CATEGORIES, fetchAccounts, type Category } from '@/lib/transactions';
 import { formatINR, formatINRCompact } from '@/lib/currency';
+
+/** "1 Jun – 30 Jun 2026": how a statement heads its period. */
+function rangeLabel(from: string, to: string): string {
+  const fmt = (iso: string, withYear: boolean) =>
+    new Date(`${iso}T00:00:00Z`).toLocaleDateString('en-GB', {
+      day: 'numeric',
+      month: 'short',
+      ...(withYear ? { year: 'numeric' } : {}),
+      timeZone: 'UTC',
+    });
+  return `${fmt(from, false)} – ${fmt(to, true)}`;
+}
 
 function monthLabel(month: string): string {
   const [year, index] = month.split('-').map(Number);
@@ -93,11 +105,17 @@ export function DashboardPage() {
 
   return (
     <main className="mx-auto flex max-w-6xl flex-col gap-5 p-4 sm:gap-6 sm:p-6">
-      <header className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-        <div className="space-y-1">
-          <h1 className="text-2xl font-semibold tracking-tight">Dashboard</h1>
+      {/* Headed like a statement: the period is the title, the page is the label. */}
+      <header className="flex flex-col gap-4 border-b pb-5 sm:flex-row sm:items-end sm:justify-between">
+        <div className="space-y-1.5">
+          <p className="eyebrow">Dashboard</p>
+          <h1 className="font-display text-[2.25rem] leading-none font-semibold tracking-tight sm:text-[2.75rem]">
+            {currentMonth ? monthLabel(currentMonth) : 'Your month'}
+          </h1>
           <p className="text-muted-foreground text-sm">
-            {data ? `${data.range.from} to ${data.range.to}` : 'Loading…'}
+            {data
+              ? `${rangeLabel(data.range.from, data.range.to)} · ${data.totals.transactions} transaction${data.totals.transactions === 1 ? '' : 's'}`
+              : 'Loading…'}
           </p>
         </div>
 
@@ -205,15 +223,15 @@ export function DashboardPage() {
 
       {data && data.totals.transactions > 0 && (
         <>
-          <section className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
+          <StatSheet>
             <StatTile
-              label="Spend"
+              label="Spent"
               value={data ? formatINR(data.totals.spend) : '—'}
               delta={data?.deltas.spend}
               hint={data ? `vs ${formatINRCompact(data.previous.spend)}` : undefined}
             />
             <StatTile
-              label="Income"
+              label="Received"
               value={data ? formatINR(data.totals.income) : '—'}
               delta={data?.deltas.income}
               riseIsGood
@@ -229,7 +247,7 @@ export function DashboardPage() {
               value={data ? String(data.totals.transactions) : '—'}
               hint={data ? `${data.previous.transactions} last period` : undefined}
             />
-          </section>
+          </StatSheet>
 
           {/* The one figure on this page that answers "how am I doing" rather
               than "what happened", so it gets a row of its own rather than a
@@ -251,38 +269,13 @@ export function DashboardPage() {
             india={india.data}
           />
 
-          {/* Budgets follow the month, not the account filter: a limit is on
-              the household's spending in a category, wherever it was paid from. */}
-          <BudgetsPanel month={currentMonth ?? undefined} />
-
-          {/* Its own range, deliberately: the tiles above answer "this month",
-          and the question this one exists for is "what about today / the
-          quarter / those three weeks in June". It follows the account filter
-          because that is a filter on whose money, not on which window. */}
-          <RangeTotals
-            accountId={accountId === 'all' ? undefined : accountId}
-            title="Debits and credits"
-          />
-
-          <section className="grid gap-4 lg:grid-cols-5">
-            <Card className="min-w-0 lg:col-span-2">
-              <CardHeader>
-                <CardTitle>Where it went</CardTitle>
-                <CardDescription>
-                  Transfers excluded; refunds netted against what they returned.
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                {data && <CategoryDonut byCategory={data.byCategory} onSelect={setDrilldown} />}
-              </CardContent>
-            </Card>
-
-            <Card className="min-w-0 lg:col-span-3">
+          <section className="grid gap-4 lg:grid-cols-2">
+            <Card className="min-w-0">
               <CardHeader className="flex-row items-start justify-between gap-4">
                 <div className="space-y-1.5">
                   <CardTitle>Spend over time</CardTitle>
                   <CardDescription>
-                    {data ? `${data.range.from} to ${data.range.to}` : ' '}
+                    {data ? rangeLabel(data.range.from, data.range.to) : ' '}
                   </CardDescription>
                 </div>
                 <Tabs value={granularity} onValueChange={(v) => setGranularity(v as Granularity)}>
@@ -298,7 +291,32 @@ export function DashboardPage() {
                 )}
               </CardContent>
             </Card>
+            <Card className="min-w-0">
+              <CardHeader>
+                <CardTitle>Where it went</CardTitle>
+                <CardDescription>
+                  Transfers excluded; refunds netted against what they returned. Select a row for
+                  its transactions.
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                {data && <CategoryBars byCategory={data.byCategory} onSelect={setDrilldown} />}
+              </CardContent>
+            </Card>
           </section>
+
+          {/* Budgets follow the month, not the account filter: a limit is on
+              the household's spending in a category, wherever it was paid from. */}
+          <BudgetsPanel month={currentMonth ?? undefined} />
+
+          {/* Its own range, deliberately: the tiles above answer "this month",
+          and the question this one exists for is "what about today / the
+          quarter / those three weeks in June". It follows the account filter
+          because that is a filter on whose money, not on which window. */}
+          <RangeTotals
+            accountId={accountId === 'all' ? undefined : accountId}
+            title="Debits and credits"
+          />
 
           <section className="grid gap-4 lg:grid-cols-2">
             <Card className="min-w-0">
@@ -334,8 +352,8 @@ export function DashboardPage() {
               </CardContent>
             </Card>
 
-            {/* The table view the donut's low-contrast slots require: every category,
-            at full precision, not just the six that fit in the ring. */}
+            {/* The table view behind the bars: every category, at full precision,
+            not just the seven the bar list names. */}
             <Card className="min-w-0">
               <CardHeader>
                 <CardTitle>By category</CardTitle>

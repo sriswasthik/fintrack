@@ -46,8 +46,10 @@ export function ProtectedRoute({
   if (isDemo && writes) {
     return (
       <main className="mx-auto max-w-md p-6">
-        <div className="space-y-3 rounded-lg border p-6">
-          <h1 className="text-lg font-semibold">Not part of the demo</h1>
+        <div className="bg-card space-y-3 rounded-md border p-6">
+          <h1 className="font-display text-2xl font-semibold tracking-tight">
+            Not part of the demo
+          </h1>
           <p className="text-muted-foreground text-sm">
             The sample account is shared and read-only, so importing and reviewing are turned off
             here. They work normally on an account of your own.

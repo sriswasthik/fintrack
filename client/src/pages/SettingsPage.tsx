@@ -67,9 +67,9 @@ export function SettingsPage() {
   const { isDemo } = useAuth();
 
   return (
-    <main className="mx-auto flex max-w-5xl flex-col gap-6 p-4 sm:p-6">
+    <main className="mx-auto flex max-w-6xl flex-col gap-6 p-4 sm:p-6">
       <div className="space-y-1">
-        <h1 className="text-2xl font-semibold tracking-tight">Settings</h1>
+        <h1 className="font-display text-3xl font-semibold tracking-tight">Settings</h1>
         <p className="text-muted-foreground text-sm">
           Your bank accounts, your imports, and your sign-in. Corrections you have taught FinTrack
           are on the{' '}

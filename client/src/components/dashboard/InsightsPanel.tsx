@@ -37,8 +37,8 @@ const TYPE_LABEL: Record<AnomalyType, string> = {
  * about a laptop you meant to buy is one you learn to ignore.
  */
 const SEVERITY: Record<AnomalySeverity, { label: string; rail: string }> = {
-  HIGH: { label: 'High', rail: 'bg-[var(--chart-2)]' },
-  MEDIUM: { label: 'Medium', rail: 'bg-[var(--chart-4)]' },
+  HIGH: { label: 'High', rail: 'bg-negative' },
+  MEDIUM: { label: 'Medium', rail: 'bg-warning' },
   LOW: { label: 'Low', rail: 'bg-[var(--chart-axis)]' },
 };
 

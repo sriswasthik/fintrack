@@ -80,7 +80,7 @@ describe('the savings rate', () => {
       rate: -0.3,
     };
     render(<SavingsRate savings={savings} />);
-    expect(screen.getByText(`${MINUS}30%`)).toHaveClass('text-destructive');
+    expect(screen.getByText(`${MINUS}30%`)).toHaveClass('text-negative');
   });
 
   it('does not say a deficit month "kept" anything', () => {
@@ -101,7 +101,7 @@ describe('the savings rate', () => {
   it('says what was kept when there was something to keep', () => {
     render(<SavingsRate savings={insights().savings} />);
     expect(screen.getByText(/kept/)).toBeInTheDocument();
-    expect(screen.getByText('+₹30,000.00')).toHaveClass('text-chart-positive');
+    expect(screen.getByText('+₹30,000.00')).toHaveClass('text-positive');
   });
 
   it('does not pass judgement on a low but positive rate', () => {
@@ -109,7 +109,7 @@ describe('the savings rate', () => {
     // app telling somebody off about their month.
     const savings = { month: '2026-08', income: 100000, expense: 96000, saved: 4000, rate: 0.04 };
     render(<SavingsRate savings={savings} />);
-    expect(screen.getByText('4%')).not.toHaveClass('text-destructive');
+    expect(screen.getByText('4%')).not.toHaveClass('text-negative');
   });
 
   it('says there is no rate rather than showing zero', () => {
@@ -127,7 +127,7 @@ describe('loans, EMIs and SIPs', () => {
     render(<CommitmentsPanel insights={insights()} />);
 
     const row = screen.getByText('BAJAJ FINANCE EMI').closest('li')!;
-    expect(within(row).getByText(`${MINUS}₹18,450.00`)).toHaveClass('text-destructive');
+    expect(within(row).getByText(`${MINUS}₹18,450.00`)).toHaveClass('text-negative');
     expect(within(row).getByText(/5th of the month · since 2026-03-05/)).toBeInTheDocument();
   });
 

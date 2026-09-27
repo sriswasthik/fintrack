@@ -38,6 +38,9 @@ export function GoogleSignInButton({
       <div className="flex justify-center">
         <GoogleLogin
           text={label}
+          theme="outline"
+          size="large"
+          shape="rectangular"
           width="320"
           onSuccess={(response) => {
             setError(null);

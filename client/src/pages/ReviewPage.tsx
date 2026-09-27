@@ -63,9 +63,9 @@ export function ReviewPage() {
   const pendingId = mutation.isPending ? mutation.variables?.transactionId : null;
 
   return (
-    <main className="mx-auto flex max-w-5xl flex-col gap-6 p-6">
+    <main className="mx-auto flex max-w-6xl flex-col gap-6 p-4 sm:p-6">
       <div className="space-y-1">
-        <h1 className="text-2xl font-semibold tracking-tight">Review queue</h1>
+        <h1 className="font-display text-3xl font-semibold tracking-tight">Review queue</h1>
         <p className="text-muted-foreground text-sm">
           Transactions nothing could categorize with confidence. Accepting or correcting one teaches
           a rule, so the same merchant is never asked about again. Every rule taught so far is on

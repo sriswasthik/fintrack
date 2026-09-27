@@ -14,8 +14,9 @@ describe('toSlices', () => {
     expect(slices.map((s) => s.category)).toEqual(['HOUSING', 'TRAVEL', 'DINING']);
   });
 
-  it('never exceeds six segments, however many categories there are', () => {
-    // A donut stops being readable past about six arcs, and the taxonomy has 20.
+  it('never exceeds eight rows, however many categories there are', () => {
+    // Seven named rows and Other: the taxonomy has 20, and a list that long
+    // stops being something the eye can rank.
     const many = [
       'HOUSING',
       'SHOPPING',
@@ -30,40 +31,33 @@ describe('toSlices', () => {
     ] as Category[];
     const slices = toSlices(many.map((c, i) => total(c, (10 - i) * 100)));
 
-    expect(slices).toHaveLength(6);
-    expect(slices[5].category).toBe('OTHER');
+    expect(slices).toHaveLength(8);
+    expect(slices[7].category).toBe('OTHER');
   });
 
-  it('folds the tail into Other rather than inventing a seventh hue', () => {
-    const many = ['A', 'B', 'C', 'D', 'E', 'F', 'G'] as unknown as Category[];
-    const slices = toSlices(many.map((c, i) => total(c, (7 - i) * 100)));
+  it('folds the tail into Other', () => {
+    const many = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I'] as unknown as Category[];
+    const slices = toSlices(many.map((c, i) => total(c, (9 - i) * 100)));
     const other = slices[slices.length - 1];
 
-    // Five named slots plus Other, so the two smallest fold: 200 + 100.
+    // Seven named rows plus Other, so the two smallest fold: 200 + 100.
     expect(other).toMatchObject({ category: 'OTHER', amount: 300 });
-    expect(other.members).toEqual(['F', 'G']);
+    expect(other.members).toEqual(['H', 'I']);
     expect(other.label).toBe('Other (2)');
   });
 
-  it('assigns colours in fixed slot order, never cycled', () => {
-    const slices = toSlices(
-      (['A', 'B', 'C', 'D', 'E'] as unknown as Category[]).map((c, i) => total(c, (5 - i) * 100)),
-    );
-    expect(slices.map((s) => s.color)).toEqual([
-      'var(--chart-1)',
-      'var(--chart-2)',
-      'var(--chart-3)',
-      'var(--chart-4)',
-      'var(--chart-5)',
-    ]);
+  it('names all eight when there are exactly eight, rather than folding one', () => {
+    const eight = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'] as unknown as Category[];
+    const slices = toSlices(eight.map((c, i) => total(c, (8 - i) * 100)));
+    expect(slices.map((s) => s.category)).toEqual(eight);
   });
 
-  it('excludes INCOME — a spending donut is not a picture of earnings', () => {
+  it('excludes INCOME — where the money went is not a picture of earnings', () => {
     const slices = toSlices([total('HOUSING', 500), total('INCOME', -10926.72)]);
     expect(slices.map((s) => s.category)).toEqual(['HOUSING']);
   });
 
-  it('excludes a category left net negative by refunds, which cannot be an arc', () => {
+  it('excludes a category left net negative by refunds, which cannot be a bar', () => {
     const slices = toSlices([total('HOUSING', 500), total('SHOPPING', -120)]);
     expect(slices.map((s) => s.category)).toEqual(['HOUSING']);
   });
@@ -105,7 +99,7 @@ describe('toSlices', () => {
       total('INCOME', -10926.72),
     ]);
 
-    expect(slices).toHaveLength(6);
+    expect(slices).toHaveLength(8);
     expect(slices[0]).toMatchObject({ category: 'HOUSING', amount: 2150, share: 24 });
     // Every slice together is the whole spend figure the dashboard leads with.
     expect(slices.reduce((sum, s) => sum + s.amount, 0)).toBeCloseTo(8959.49, 2);

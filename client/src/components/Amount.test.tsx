@@ -30,16 +30,16 @@ describe('Amount', () => {
     const el = rendered(<Amount value={1234.5} />);
 
     expect(el).toHaveTextContent(`${MINUS}₹1,234.50`);
-    expect(el).toHaveClass('text-destructive');
-    expect(el).not.toHaveClass('text-chart-positive');
+    expect(el).toHaveClass('text-negative');
+    expect(el).not.toHaveClass('text-positive');
   });
 
   it('renders a credit in green with a leading plus', () => {
     const el = rendered(<Amount value={-4599} />);
 
     expect(el).toHaveTextContent('+₹4,599.00');
-    expect(el).toHaveClass('text-chart-positive');
-    expect(el).not.toHaveClass('text-destructive');
+    expect(el).toHaveClass('text-positive');
+    expect(el).not.toHaveClass('text-negative');
   });
 
   it('leaves zero uncoloured and unsigned', () => {
@@ -50,17 +50,15 @@ describe('Amount', () => {
     expect(el).toHaveTextContent('₹0.00');
     expect(el.textContent).not.toContain(MINUS);
     expect(el.textContent).not.toContain('+');
-    expect(el).not.toHaveClass('text-destructive');
-    expect(el).not.toHaveClass('text-chart-positive');
+    expect(el).not.toHaveClass('text-negative');
+    expect(el).not.toHaveClass('text-positive');
   });
 
   it('uses the magnitude when the direction is given', () => {
     // A payee's "received" is stored as a positive magnitude. Inferring from
     // the sign there would paint every credit red.
     expect(rendered(<Amount value={3900.25} direction="credit" />)).toHaveTextContent('+₹3,900.25');
-    expect(rendered(<Amount value={3900.25} direction="credit" />)).toHaveClass(
-      'text-chart-positive',
-    );
+    expect(rendered(<Amount value={3900.25} direction="credit" />)).toHaveClass('text-positive');
     expect(rendered(<Amount value={-500} direction="debit" />)).toHaveTextContent(
       `${MINUS}₹500.00`,
     );
@@ -72,7 +70,7 @@ describe('Amount', () => {
     const forced = rendered(<Amount value={0} direction="credit" />);
     expect(forced).toHaveTextContent('₹0.00');
     expect(forced.textContent).not.toContain('+');
-    expect(forced).not.toHaveClass('text-chart-positive');
+    expect(forced).not.toHaveClass('text-positive');
     expect(forced.textContent).toBe(rendered(<Amount value={0} />).textContent);
   });
 

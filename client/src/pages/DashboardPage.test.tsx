@@ -27,9 +27,9 @@ vi.mock('@/context/auth-context', () => ({
 
 // Recharts measures its container, which jsdom cannot do, so the two chart
 // components are stubbed. Their own logic is covered by slices.test.ts.
-vi.mock('@/components/dashboard/CategoryDonut', () => ({
-  CategoryDonut: ({ onSelect }: { onSelect: (c: string) => void }) => (
-    <button onClick={() => onSelect('SHOPPING')}>donut: SHOPPING</button>
+vi.mock('@/components/dashboard/CategoryBars', () => ({
+  CategoryBars: ({ onSelect }: { onSelect: (c: string) => void }) => (
+    <button onClick={() => onSelect('SHOPPING')}>bars: SHOPPING</button>
   ),
 }));
 vi.mock('@/components/dashboard/SpendOverTime', () => ({
@@ -330,7 +330,7 @@ describe('DashboardPage', () => {
     renderPage();
     await screen.findByText('₹8,959.49');
 
-    await user.click(await screen.findByRole('button', { name: 'donut: SHOPPING' }));
+    await user.click(await screen.findByRole('button', { name: 'bars: SHOPPING' }));
 
     await waitFor(() =>
       expect(fetchTransactionsMock).toHaveBeenCalledWith(
@@ -347,8 +347,8 @@ describe('DashboardPage', () => {
     // Its own question, not a second copy of the tiles above: debits and
     // credits over a window the reader picks.
     expect(screen.getByText('Debits and credits')).toBeInTheDocument();
-    expect(await screen.findByText('\u2212₹1,73,967.09')).toHaveClass('text-destructive');
-    expect(screen.getByText('+₹2,34,010.10')).toHaveClass('text-chart-positive');
+    expect(await screen.findByText('\u2212₹1,73,967.09')).toHaveClass('text-negative');
+    expect(screen.getByText('+₹2,34,010.10')).toHaveClass('text-positive');
 
     // Narrowing the page to one account narrows the widget with it: that is a
     // filter on whose money, not on which window.

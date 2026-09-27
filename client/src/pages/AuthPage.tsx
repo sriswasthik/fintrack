@@ -106,10 +106,38 @@ export function AuthPage({ mode }: { mode: 'login' | 'register' }) {
   };
 
   return (
-    <main className="mx-auto flex min-h-[70svh] max-w-md flex-col justify-center p-4 sm:p-6">
+    <main className="mx-auto grid min-h-[75svh] max-w-5xl items-center gap-10 px-4 py-10 sm:px-6 lg:grid-cols-[1fr_minmax(0,26rem)] lg:gap-16">
+      {/* The left half says what signing in gets you, in the ledger's voice.
+          Beside the form on a wide screen, and gone on a phone, where the
+          form is the only thing worth the space. */}
+      <section className="hidden space-y-6 lg:block">
+        <p className="eyebrow">FinTrack · Personal ledger</p>
+        <p className="font-display text-[2.5rem] leading-[1.05] font-semibold tracking-tight">
+          Every rupee, accounted for — and nothing guessed.
+        </p>
+        <ul className="text-muted-foreground max-w-md divide-y border-y text-[0.9375rem]">
+          {[
+            [
+              '01',
+              'Passwords are hashed with bcrypt; the session is renewed through an httpOnly cookie.',
+            ],
+            [
+              '02',
+              'Categorization sends a model merchant names only — no amounts, and never a payment to a person.',
+            ],
+            ['03', 'Import undo, learned rules and a full CSV export, whenever you want them.'],
+          ].map(([n, text]) => (
+            <li key={n} className="flex gap-4 py-3">
+              <span className="text-foreground font-mono text-xs leading-6">{n}</span>
+              <span>{text}</span>
+            </li>
+          ))}
+        </ul>
+      </section>
+
       <Card className="min-w-0">
         <CardHeader>
-          <CardTitle>{copy.title}</CardTitle>
+          <CardTitle className="text-2xl">{copy.title}</CardTitle>
           <CardDescription>{copy.description}</CardDescription>
         </CardHeader>
         <CardContent>
@@ -124,9 +152,9 @@ export function AuthPage({ mode }: { mode: 'login' | 'register' }) {
           {/* The divider belongs to the button: with no button above it, an
               "or" separates the form from nothing. */}
           {googleAvailable && (
-            <div className="my-4 flex items-center gap-3">
+            <div className="my-5 flex items-center gap-3">
               <span className="bg-border h-px flex-1" />
-              <span className="text-muted-foreground text-xs">or</span>
+              <span className="eyebrow">or</span>
               <span className="bg-border h-px flex-1" />
             </div>
           )}
@@ -186,7 +214,7 @@ export function AuthPage({ mode }: { mode: 'login' | 'register' }) {
               </p>
             )}
 
-            <Button type="submit" className="w-full" disabled={pending}>
+            <Button type="submit" size="lg" className="w-full" disabled={pending}>
               {pending ? copy.pending : copy.submit}
             </Button>
           </form>
@@ -199,7 +227,7 @@ export function AuthPage({ mode }: { mode: 'login' | 'register' }) {
           </p>
 
           {/* Renders nothing unless the server offers demo mode. */}
-          <div className="mt-4 border-t pt-4">
+          <div className="mt-4 border-t pt-4 empty:hidden">
             <DemoButton />
           </div>
         </CardContent>
