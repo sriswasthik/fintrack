@@ -18,6 +18,11 @@
  *      of "refunds".
  *   3. A split transaction is counted by its parts, never by its parent as well.
  *      Phase 3 introduced splits; counting both would double every split charge.
+ *
+ * And one of its own: money *in* that nobody has categorized yet is neither
+ * spending nor income. Netting it against spending — the way a refund nets —
+ * turned an unrecognised salary credit into "you spent minus ₹24,000". It is
+ * reported on its own as `unreviewedIn` until someone says what it was.
  */
 import type { PrismaClient } from '../../generated/prisma/client';
 import type { Category } from '../../generated/prisma/enums';
@@ -64,6 +69,8 @@ export interface DashboardTotals {
   income: number;
   net: number;
   transactions: number;
+  /** Money in not yet categorized, as a magnitude. In neither spend nor income. */
+  unreviewedIn: number;
 }
 
 export interface DashboardResult {
@@ -81,9 +88,16 @@ export interface DashboardResult {
 }
 
 /** Rows Postgres hands back; every numeric arrives as a string or null. */
+interface RawTotals {
+  spend: string | null;
+  income: string | null;
+  transactions: string | null;
+  unreviewed_in: string | null;
+}
+
 interface RawResult {
-  totals: { spend: string | null; income: string | null; transactions: string | null } | null;
-  previous: { spend: string | null; income: string | null; transactions: string | null } | null;
+  totals: RawTotals | null;
+  previous: RawTotals | null;
   by_category: { category: Category; amount: string; transactions: string }[] | null;
   series: { bucket_start: string; spend: string }[] | null;
   top_merchants: { merchant: string; amount: string; transactions: string }[] | null;
@@ -151,25 +165,33 @@ export async function aggregateDashboard(
       FROM expanded e
       WHERE (${categoryFilter}::text[] IS NULL OR e.category::text = ANY(${categoryFilter}::text[]))
     ),
-    -- Spend excludes both TRANSFER and INCOME (§5).
+    -- Spend excludes both TRANSFER and INCOME (§5), and money in that nobody
+    -- has categorized yet, which is not a refund of anything we know of.
     spend_rows AS (
-      SELECT * FROM filtered WHERE category NOT IN ('TRANSFER', 'INCOME')
+      SELECT * FROM filtered
+      WHERE category NOT IN ('TRANSFER', 'INCOME')
+        AND NOT (category = 'UNCATEGORIZED' AND amount < 0)
     )
     SELECT
       (SELECT json_build_object(
-          'spend',        COALESCE(SUM(amount) FILTER (WHERE in_current AND category NOT IN ('TRANSFER','INCOME')), 0),
+          'spend',        COALESCE(SUM(amount) FILTER (WHERE in_current AND category NOT IN ('TRANSFER','INCOME')
+                            AND NOT (category = 'UNCATEGORIZED' AND amount < 0)), 0),
           'income',       COALESCE(-SUM(amount) FILTER (WHERE in_current AND category = 'INCOME'), 0),
-          'transactions', COUNT(DISTINCT id) FILTER (WHERE in_current)
+          'transactions', COUNT(DISTINCT id) FILTER (WHERE in_current),
+          'unreviewed_in', COALESCE(-SUM(amount) FILTER (WHERE in_current AND category = 'UNCATEGORIZED' AND amount < 0), 0)
         ) FROM filtered) AS totals,
       (SELECT json_build_object(
-          'spend',        COALESCE(SUM(amount) FILTER (WHERE in_previous AND category NOT IN ('TRANSFER','INCOME')), 0),
+          'spend',        COALESCE(SUM(amount) FILTER (WHERE in_previous AND category NOT IN ('TRANSFER','INCOME')
+                            AND NOT (category = 'UNCATEGORIZED' AND amount < 0)), 0),
           'income',       COALESCE(-SUM(amount) FILTER (WHERE in_previous AND category = 'INCOME'), 0),
-          'transactions', COUNT(DISTINCT id) FILTER (WHERE in_previous)
+          'transactions', COUNT(DISTINCT id) FILTER (WHERE in_previous),
+          'unreviewed_in', COALESCE(-SUM(amount) FILTER (WHERE in_previous AND category = 'UNCATEGORIZED' AND amount < 0), 0)
         ) FROM filtered) AS previous,
       (SELECT json_agg(c ORDER BY c.amount DESC) FROM (
           SELECT category, SUM(amount) AS amount, COUNT(DISTINCT id) AS transactions
           FROM filtered
           WHERE in_current AND category <> 'TRANSFER'
+            AND NOT (category = 'UNCATEGORIZED' AND amount < 0)
           GROUP BY category
         ) c) AS by_category,
       (SELECT json_agg(s ORDER BY s.bucket_start) FROM (
@@ -196,6 +218,7 @@ export async function aggregateDashboard(
     income: num(row?.totals?.income),
     net: 0,
     transactions: Number(row?.totals?.transactions ?? 0),
+    unreviewedIn: num(row?.totals?.unreviewed_in),
   };
   totals.net = Math.round((totals.income - totals.spend) * 100) / 100;
 
@@ -204,6 +227,7 @@ export async function aggregateDashboard(
     income: num(row?.previous?.income),
     net: 0,
     transactions: Number(row?.previous?.transactions ?? 0),
+    unreviewedIn: num(row?.previous?.unreviewed_in),
   };
   previous.net = Math.round((previous.income - previous.spend) * 100) / 100;
 

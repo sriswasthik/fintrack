@@ -142,7 +142,13 @@ describe('GET /api/dashboard', () => {
       .set(authHeader())
       .expect(200);
 
-    expect(response.body.totals).toEqual({ spend: 0, income: 0, net: 0, transactions: 0 });
+    expect(response.body.totals).toEqual({
+      spend: 0,
+      income: 0,
+      net: 0,
+      transactions: 0,
+      unreviewedIn: 0,
+    });
     expect(response.body.deltas).toEqual({ spend: null, income: null });
     expect(response.body.byCategory).toEqual([]);
     expect(response.body.series).toEqual([]);
@@ -152,7 +158,12 @@ describe('GET /api/dashboard', () => {
   it('converts the numeric strings Postgres returns and computes shares and deltas', async () => {
     db.queryRaw.mockResolvedValue([
       {
-        totals: { spend: '8959.49', income: '10926.72', transactions: '111' },
+        totals: {
+          spend: '8959.49',
+          income: '10926.72',
+          transactions: '111',
+          unreviewed_in: '1500.00',
+        },
         previous: { spend: '13295.66', income: '8225.77', transactions: '124' },
         by_category: [
           { category: 'HOUSING', amount: '2150.00', transactions: '1' },
@@ -177,6 +188,8 @@ describe('GET /api/dashboard', () => {
       income: 10926.72,
       net: 1967.23,
       transactions: 111,
+      // Money in nobody has categorized: reported, but in neither total.
+      unreviewedIn: 1500,
     });
     expect(response.body.deltas).toEqual({ spend: -32.6, income: 32.8 });
     // Share is of gross spending, so INCOME does not distort it and never

@@ -235,7 +235,25 @@ export function DashboardPage() {
               value={data ? formatINR(data.totals.income) : '—'}
               delta={data?.deltas.income}
               riseIsGood
-              hint={data ? `vs ${formatINRCompact(data.previous.income)}` : undefined}
+              hint={
+                data ? (
+                  <>
+                    vs {formatINRCompact(data.previous.income)}
+                    {(data.totals.unreviewedIn ?? 0) > 0 && (
+                      <>
+                        {' · '}
+                        <Link
+                          to="/review"
+                          className="text-foreground underline underline-offset-2"
+                          title="Money in that has not been categorized yet. It counts as neither spending nor income until it is."
+                        >
+                          {formatINRCompact(data.totals.unreviewedIn ?? 0)} to review
+                        </Link>
+                      </>
+                    )}
+                  </>
+                ) : undefined
+              }
             />
             <StatTile
               label="Net"

@@ -2,6 +2,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { ReactNode } from 'react';
+import { MemoryRouter } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { DashboardPage } from '@/pages/DashboardPage';
@@ -85,7 +86,9 @@ const JUNE: Dashboard = {
 function renderPage() {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   const wrapper = ({ children }: { children: ReactNode }) => (
-    <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+    <QueryClientProvider client={queryClient}>
+      <MemoryRouter>{children}</MemoryRouter>
+    </QueryClientProvider>
   );
   return render(<DashboardPage />, { wrapper });
 }
@@ -210,6 +213,24 @@ describe('DashboardPage', () => {
     expect(screen.getByText('₹10,926.72')).toBeInTheDocument();
     expect(screen.getByText('₹1,967.23')).toBeInTheDocument();
     expect(screen.getByText('111')).toBeInTheDocument();
+  });
+
+  it('points at money in that has not been categorized, rather than counting it', async () => {
+    fetchDashboardMock.mockResolvedValue({
+      ...JUNE,
+      totals: { ...JUNE.totals, unreviewedIn: 185000 },
+    });
+    renderPage();
+
+    const link = await screen.findByRole('link', { name: /to review/ });
+    expect(link).toHaveTextContent('₹1,85,000 to review');
+    expect(link).toHaveAttribute('href', '/review');
+  });
+
+  it('says nothing about review when every credit is categorized', async () => {
+    renderPage();
+    await screen.findByText('₹8,959.49');
+    expect(screen.queryByRole('link', { name: /to review/ })).not.toBeInTheDocument();
   });
 
   it('shows the direction of change with an arrow as well as colour', async () => {

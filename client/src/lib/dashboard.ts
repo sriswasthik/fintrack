@@ -8,6 +8,12 @@ export interface DashboardTotals {
   income: number;
   net: number;
   transactions: number;
+  /**
+   * Money in that nobody has categorized yet, as a magnitude. Counted in
+   * neither spend nor income until it is, so an unrecognised salary credit
+   * cannot turn the month's spending negative.
+   */
+  unreviewedIn?: number;
 }
 
 export interface CategoryTotal {
