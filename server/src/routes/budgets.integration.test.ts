@@ -16,6 +16,7 @@ import { app } from '../app';
 import { createPrismaClient } from '../db';
 import type { PrismaClient } from '../generated/prisma/client';
 import { signAccessToken } from '../services/auth/tokens';
+import { applyRuleEngine } from '../services/rules/apply';
 
 const hasDatabase = Boolean(process.env.DATABASE_URL);
 
@@ -47,6 +48,9 @@ beforeAll(async () => {
   await cleanUp();
 
   const seeded = await seedSyntheticDataset(prisma, { email: EMAIL, name: 'Budgets' });
+  // The seed leaves every row UNCATEGORIZED on purpose, so the rules have to
+  // run before there is any category spend for a budget to be measured against.
+  await applyRuleEngine(prisma, { userId: seeded.userId });
   const other = await prisma.user.create({ data: { email: OTHER_EMAIL } });
   auth = { Authorization: `Bearer ${signAccessToken(seeded.userId)}` };
   otherAuth = { Authorization: `Bearer ${signAccessToken(other.id)}` };
