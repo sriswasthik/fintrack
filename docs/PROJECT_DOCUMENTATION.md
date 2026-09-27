@@ -210,9 +210,18 @@ The engine also pairs **transfers** between the user's own accounts (excluded
 from spend and income), links **refunds** to the purchase they reverse, and
 leaves **manual** categorizations untouched on every re-run.
 
+**Salary recognition** runs next. An Indian NEFT salary credit usually names
+only the employer, so no keyword rule can see it. The salary detector
+recognises it by behaviour instead — the same payer, three consecutive months,
+amounts within 10%, the same pay day — and that payer's uncategorized credits
+are filed as income. Only uncategorized rows are changed; transfers and
+refunds are never evidence; a payer who reads as a person is left for the
+user to classify.
+
 ### 5.3 AI fallback
 
-Runs after the rules, on every import and re-categorization:
+Runs after the rules and salary recognition, on every import and
+re-categorization:
 
 - Only **merchant names** are sent — no amounts, dates or descriptions.
 - **Payments to a person** (mobile-number UPI handle, person-to-person wallet
@@ -237,6 +246,10 @@ asked about again; learned rules can be edited or forgotten on their own page.
   count with change against the previous month; spend over time (daily or
   weekly); where it went (ranked bars, each opening its transactions); top
   merchants; every category in a table. Filters by account and category.
+  Money in that nobody has categorized yet is counted in neither spending nor
+  income — it is shown under "Received" as an amount "to review", linking to
+  the review queue — so an unrecognised credit can never make spending read
+  negative.
 - **Insights ("Worth a look").** Subscription price rises, new recurring
   charges, unusual amounts for a category, category spend spikes and possible
   duplicates — deterministic statistics, each with a plain explanation and a
@@ -437,9 +450,9 @@ email tested, AI switches decided, backups restored once, logs located).
 
 | Suite                                                 | Result                                   |
 | ----------------------------------------------------- | ---------------------------------------- |
-| Server, with a PostgreSQL database                    | **1,458 passed**, 0 skipped              |
-| Server, without a database (as a contributor runs it) | 1,341 passed, 118 database tests skipped |
-| Client                                                | **275 passed**                           |
+| Server, with a PostgreSQL database                    | **1,470 passed**, 0 skipped              |
+| Server, without a database (as a contributor runs it) | 1,347 passed, 123 database tests skipped |
+| Client                                                | **278 passed**                           |
 | Lint, typecheck, Prettier                             | Clean in both workspaces                 |
 | Production builds                                     | Client and server both build             |
 
@@ -518,11 +531,11 @@ bills identified with no false positives, 6 of 6 sync-glitch duplicates caught.
 
 ## 16. Known limitations and next steps
 
-- **Salary credits are not automatically income.** Built-in rules recognise
-  SALARY, PAYROLL and DIRECT DEP; an NEFT credit that names only the employer
-  lands in review. One correction teaches a rule for every later month. Until
-  then the month's "Spent" can read negative, because uncategorized money in
-  is netted against spending.
+- **Salary needs three months to be recognised.** An NEFT salary credit that
+  names only the employer is filed as income once three consecutive months
+  show the pattern; before that it waits in review (one correction also
+  teaches a rule). Meanwhile it is shown as money "to review", never as
+  negative spending.
 - **Scanned PDFs** are refused — there is no OCR.
 - **Dedicated PDF layouts** exist for HDFC, SBI and PhonePe only; others go to
   the generic reader, then the AI reader.
@@ -563,5 +576,5 @@ React 19 · TypeScript · Express 5 · PostgreSQL/Prisma · Claude API.
   and structured request-ID logging.
 - Designed a distinctive accessible interface ("Ledger") with light and dark
   themes and a chart palette validated for colour-blind readers.
-- Backed by **1,700+ automated tests** (1,458 server tests against PostgreSQL,
-  275 client tests) and CI on every change.
+- Backed by **1,700+ automated tests** (1,470 server tests against PostgreSQL,
+  278 client tests) and CI on every change.
