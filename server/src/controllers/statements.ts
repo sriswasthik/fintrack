@@ -19,6 +19,7 @@ import { z } from 'zod';
 import { getPrisma } from '../db';
 import { currentUserId } from '../middleware/auth';
 import { HttpError } from '../middleware/errorHandler';
+import { redactStatementText } from '../services/ai/redact';
 import {
   AnthropicStatementReader,
   StatementReaderConfigurationError,
@@ -165,8 +166,25 @@ async function readStatement(buffer: Buffer, password: string | undefined): Prom
     );
   }
 
+  if (process.env.AI_STATEMENT_READER === 'off') {
+    throw new HttpError(
+      422,
+      "This statement's layout is not one we read directly, and reading it with AI is switched off on this server.",
+      { reason: 'unsupported-layout' },
+    );
+  }
+
+  // Only the transaction table goes to the model, with identifiers masked —
+  // never the name, address and account number above it (services/ai/redact.ts).
+  const { text: forModel } = redactStatementText(rawText);
+  if (!forModel) {
+    throw new HttpError(422, 'No transactions could be found in this statement.', {
+      reason: 'unreadable-layout',
+    });
+  }
+
   try {
-    const read = await getReader().read(rawText);
+    const read = await getReader().read(forModel);
     return {
       rows: read.rows,
       errors: read.errors,

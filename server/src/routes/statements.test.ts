@@ -40,7 +40,14 @@ beforeEach(() => {
   });
 });
 
-afterEach(() => setStatementReader(undefined));
+// These tests stub the reader, so it is safe to switch on (src/test/setup.ts).
+beforeEach(() => {
+  process.env.AI_STATEMENT_READER = 'on';
+});
+afterEach(() => {
+  setStatementReader(undefined);
+  process.env.AI_STATEMENT_READER = 'off';
+});
 
 describe('POST /api/statements/inspect', () => {
   it('says a plain statement needs no password', async () => {
@@ -213,8 +220,8 @@ describe('POST /api/statements/parse', () => {
     };
     setStatementReader(reader);
 
-    // A PDF with text but no recognisable table.
-    const letter = await buildTextOnlyPdf();
+    // A PDF with transactions but no recognisable table.
+    const letter = await buildTextOnlyPdf(PROSE_STATEMENT);
     const response = await request(app)
       .post('/api/statements/parse')
       .set(authHeader())
@@ -233,7 +240,7 @@ describe('POST /api/statements/parse', () => {
       read: vi.fn().mockRejectedValue(new StatementReaderConfigurationError('no API key')),
     });
 
-    const letter = await buildTextOnlyPdf();
+    const letter = await buildTextOnlyPdf(PROSE_STATEMENT);
     const response = await request(app)
       .post('/api/statements/parse')
       .set(authHeader())
@@ -247,6 +254,60 @@ describe('POST /api/statements/parse', () => {
     expect(response.body.error).not.toMatch(/api.?key/i);
   });
 
+  it('sends the reader only the transactions, with identifiers masked', async () => {
+    const reader: StatementReader = {
+      read: vi.fn().mockResolvedValue({ rows: [], errors: [], calls: 1 }),
+    };
+    setStatementReader(reader);
+
+    await request(app)
+      .post('/api/statements/parse')
+      .set(authHeader())
+      .field('accountId', ACCOUNT_ID)
+      .attach('file', await buildTextOnlyPdf(PROSE_STATEMENT), 'statement.pdf');
+
+    const sent = vi.mocked(reader.read).mock.calls[0][0];
+    expect(sent).toContain('PAYTM*CHAI POINT 228.21');
+    expect(sent).toContain('UPI/XXXXXX3210@ybl/RAMESH 500.00');
+    // Nothing about the account holder leaves the server.
+    expect(sent).not.toMatch(/A SAMPLE PERSON|123456789012|EXMP0001234|Example Road/);
+  });
+
+  it('does not call the reader for a PDF with no transactions in it', async () => {
+    const reader: StatementReader = { read: vi.fn() };
+    setStatementReader(reader);
+
+    const response = await request(app)
+      .post('/api/statements/parse')
+      .set(authHeader())
+      .field('accountId', ACCOUNT_ID)
+      .attach('file', await buildTextOnlyPdf(), 'letter.pdf')
+      .expect(422);
+
+    expect(response.body.details.reason).toBe('unreadable-layout');
+    expect(reader.read).not.toHaveBeenCalled();
+  });
+
+  it('does not call the reader when the operator switched it off', async () => {
+    const reader: StatementReader = { read: vi.fn() };
+    setStatementReader(reader);
+    process.env.AI_STATEMENT_READER = 'off';
+    try {
+      const response = await request(app)
+        .post('/api/statements/parse')
+        .set(authHeader())
+        .field('accountId', ACCOUNT_ID)
+        .attach('file', await buildTextOnlyPdf(PROSE_STATEMENT), 'statement.pdf')
+        .expect(422);
+
+      expect(response.body.details.reason).toBe('unsupported-layout');
+      expect(response.body.error).toMatch(/switched off/);
+      expect(reader.read).not.toHaveBeenCalled();
+    } finally {
+      process.env.AI_STATEMENT_READER = 'on';
+    }
+  });
+
   it('refuses a reader answer it could not validate', async () => {
     setStatementReader({
       read: vi
@@ -254,7 +315,7 @@ describe('POST /api/statements/parse', () => {
         .mockRejectedValue(new StatementReaderResponseError('The reader did not return JSON')),
     });
 
-    const letter = await buildTextOnlyPdf();
+    const letter = await buildTextOnlyPdf(PROSE_STATEMENT);
     const response = await request(app)
       .post('/api/statements/parse')
       .set(authHeader())
@@ -278,7 +339,9 @@ describe('POST /api/statements/parse', () => {
 });
 
 /** A PDF with prose and no table, to exercise the fallback path. */
-async function buildTextOnlyPdf(): Promise<Buffer> {
+async function buildTextOnlyPdf(
+  lines = ['Dear customer,', 'Thank you for banking with us. Your statement follows overleaf.'],
+): Promise<Buffer> {
   const { default: PDFDocument } = await import('pdfkit');
   const doc = new PDFDocument({ size: 'A4', margin: 40 });
   const chunks: Buffer[] = [];
@@ -286,11 +349,24 @@ async function buildTextOnlyPdf(): Promise<Buffer> {
   const done = new Promise<Buffer>((resolve) =>
     doc.on('end', () => resolve(Buffer.concat(chunks))),
   );
-  doc.fontSize(11).text('Dear customer,', 40, 60);
-  doc.text('Thank you for banking with us. Your statement follows overleaf.', 40, 90);
+  doc.fontSize(11);
+  lines.forEach((line, i) => doc.text(line, 40, 60 + i * 30));
   doc.end();
   return done;
 }
+
+/**
+ * Transactions no reader recognises — no table, no column titles — under the
+ * kind of preamble every statement opens with. Every value is invented.
+ */
+const PROSE_STATEMENT = [
+  'Account Holder: A SAMPLE PERSON',
+  'Account No: 123456789012   IFSC: EXMP0001234',
+  'Your activity this month:',
+  '01/03/2026 you paid PAYTM*CHAI POINT 228.21',
+  '02/03/2026 you paid UPI/9876543210@ybl/RAMESH 500.00',
+  'Registered office: 1 Example Road',
+];
 
 // ---------------------------------------------------------------------------
 // Batch import

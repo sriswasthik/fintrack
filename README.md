@@ -117,7 +117,10 @@ Open `server/.env` and set two things:
 categorization fallback and the written monthly summary, which degrades to a
 generated figures-only recap rather than failing. With it, every import runs the
 fallback over the merchants the rules could not settle; set
-`AI_CATEGORIZATION=off` to keep merchant names on the server instead.
+`AI_CATEGORIZATION=off` to keep merchant names on the server instead. A PDF in a
+layout no built-in reader knows is transcribed by the model from its transaction
+rows alone, with account numbers and other identifiers masked; set
+`AI_STATEMENT_READER=off` to refuse such a file instead.
 
 ### 3. Set up the database
 
@@ -251,6 +254,7 @@ broken build.
 Copy the `.env.example` files and fill them in — never commit a real `.env`.
 
 - `server/.env` — `DATABASE_URL`, `ANTHROPIC_API_KEY`, `AI_CATEGORIZATION`,
+  `AI_STATEMENT_READER`,
   `JWT_ACCESS_SECRET`, `JWT_REFRESH_SECRET`, `CORS_ORIGIN`, `PORT`, `DEMO_MODE`,
   `DEMO_USER_EMAIL`
 - `client/.env` — `VITE_API_BASE_URL`
