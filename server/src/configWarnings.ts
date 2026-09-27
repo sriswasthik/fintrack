@@ -14,6 +14,17 @@ export function configurationWarnings(env: NodeJS.ProcessEnv = process.env): str
   const production = env.NODE_ENV === 'production';
   const warnings: string[] = [];
 
+  // Not optional anywhere: without them no token can be signed, so every
+  // sign-up, sign-in and session refresh answers 500.
+  const missingSecrets = ['JWT_ACCESS_SECRET', 'JWT_REFRESH_SECRET'].filter(
+    (name) => !env[name]?.trim(),
+  );
+  if (missingSecrets.length > 0) {
+    warnings.push(
+      `${missingSecrets.join(' and ')} ${missingSecrets.length === 1 ? 'is' : 'are'} not set: nobody can sign up or sign in. Set each to a long random value, e.g. \`openssl rand -base64 32\`.`,
+    );
+  }
+
   if (production && !(env.RESEND_API_KEY && env.EMAIL_FROM)) {
     warnings.push(
       'RESEND_API_KEY and EMAIL_FROM are not set: password reset is unavailable and no welcome email is sent.',

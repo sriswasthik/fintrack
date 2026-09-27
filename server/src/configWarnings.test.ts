@@ -4,6 +4,8 @@ import { configurationWarnings } from './configWarnings';
 
 const complete = {
   NODE_ENV: 'production',
+  JWT_ACCESS_SECRET: 'access-secret-for-tests',
+  JWT_REFRESH_SECRET: 'refresh-secret-for-tests',
   RESEND_API_KEY: 're_x',
   EMAIL_FROM: 'FinTrack <hello@example.com>',
   CORS_ORIGIN: 'https://fintrack.example.com',
@@ -14,6 +16,19 @@ const complete = {
 describe('configurationWarnings', () => {
   it('says nothing about a complete production configuration', () => {
     expect(configurationWarnings(complete)).toEqual([]);
+  });
+
+  it('warns, in every environment, that nobody can sign in without the JWT secrets', () => {
+    const warnings = configurationWarnings({
+      NODE_ENV: 'development',
+      ANTHROPIC_API_KEY: 'sk-ant-x',
+      JWT_ACCESS_SECRET: '',
+    });
+    expect(warnings).toEqual([
+      expect.stringMatching(
+        /^JWT_ACCESS_SECRET and JWT_REFRESH_SECRET are not set: nobody can sign up/,
+      ),
+    ]);
   });
 
   it('warns that password reset is unavailable without a mail provider', () => {
@@ -48,7 +63,12 @@ describe('configurationWarnings', () => {
 
   it('keeps quiet about email, CORS and demo mode in local development', () => {
     expect(
-      configurationWarnings({ NODE_ENV: 'development', ANTHROPIC_API_KEY: 'sk-ant-x' }),
+      configurationWarnings({
+        NODE_ENV: 'development',
+        ANTHROPIC_API_KEY: 'sk-ant-x',
+        JWT_ACCESS_SECRET: 'a',
+        JWT_REFRESH_SECRET: 'b',
+      }),
     ).toEqual([]);
   });
 });

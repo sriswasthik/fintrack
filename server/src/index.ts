@@ -5,6 +5,8 @@ import 'dotenv/config';
 
 import { app } from './app';
 import { configurationWarnings } from './configWarnings';
+import { checkDatabase } from './databaseCheck';
+import { getPrisma } from './db';
 import { log } from './middleware/requestLog';
 
 // Anything that escapes every handler is logged in the same shape as the rest,
@@ -27,4 +29,12 @@ app.listen(port, () => {
   // eslint-disable-next-line no-console
   console.log(`FinTrack API listening on http://localhost:${port}`);
   for (const warning of configurationWarnings()) log('warn', `[config] ${warning}`);
+  void checkDatabase(getPrisma).then((result) => {
+    if (result.ok) log('info', '[database] connected');
+    else
+      log(
+        'error',
+        `[database] ${result.reason}. Every request that needs data will fail until this is fixed.`,
+      );
+  });
 });
