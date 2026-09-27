@@ -11,7 +11,12 @@ import Papa from 'papaparse';
 import { z } from 'zod';
 
 import { getPrisma } from '../db';
-import { LOW_CONFIDENCE_THRESHOLD } from '../services/ai/categorize';
+import { runLlmPass } from '../services/ai/apply';
+import {
+  AnthropicMerchantCategorizer,
+  LOW_CONFIDENCE_THRESHOLD,
+  type MerchantCategorizer,
+} from '../services/ai/categorize';
 import { monthWindow } from '../services/dashboard/window';
 import { CATEGORIES } from '../services/rules/categories';
 import { classifyCounterparty } from '../services/rules/counterparty';
@@ -95,6 +100,40 @@ const commitBodySchema = z.object({
    */
   fileNames: z.array(z.string().trim().min(1).max(255)).max(50).default([]),
 });
+
+let categorizer: MerchantCategorizer | undefined;
+
+/**
+ * Lazily built, like the summarizer: importing this module must not fail on a
+ * server with no API key. Only actually asking the model does.
+ */
+function getCategorizer(): MerchantCategorizer {
+  categorizer ??= new AnthropicMerchantCategorizer();
+  return categorizer;
+}
+
+/** Test seam, so a route test never reaches the network. */
+export function setMerchantCategorizer(next: MerchantCategorizer | undefined): void {
+  categorizer = next;
+}
+
+/**
+ * Everything that runs after rows land: the deterministic rules, then the
+ * model for what they left, then the payee ledger.
+ *
+ * The order is load-bearing. The model only ever sees what no rule settled
+ * (PROJECT_CONTEXT.md §4), and payees are resolved last because which lines
+ * get one depends on the category — an ATM withdrawal has no counterparty.
+ * Scoped to the caller throughout: transfer pairing looks across their other
+ * accounts, and must never look across anybody else's.
+ */
+async function categorizeForUser(userId: string) {
+  const prisma = getPrisma();
+  const categorization = await applyRuleEngine(prisma, { userId });
+  const ai = await runLlmPass(prisma, { userId, categorizer: getCategorizer() });
+  const payees = await resolvePayees(prisma, { userId });
+  return { categorization, ai, payees };
+}
 
 /**
  * The named account, provided it belongs to the caller.
@@ -207,8 +246,8 @@ export const uploadTransactions: RequestHandler = async (req, res) => {
 /**
  * POST /api/transactions/commit
  *
- * Inserts the reviewed rows. Categorization is Phase 3/4's job, so everything
- * lands as UNCATEGORIZED with zero confidence.
+ * Inserts the reviewed rows as UNCATEGORIZED with zero confidence, then
+ * categorizes them: the rule engine first, the model for whatever it left.
  *
  * The rows are tagged with an `ImportBatch` written in the same transaction,
  * which is what lets the whole import be undone later as one unit
@@ -251,16 +290,7 @@ export const commitTransactions: RequestHandler = async (req, res) => {
     });
   }
 
-  // The deterministic pass runs immediately, before anything reaches the LLM
-  // fallback (PROJECT_CONTEXT.md §4). It is scoped to the caller because
-  // transfer pairing looks across their other accounts — and must never look
-  // across anybody else's.
-  const categorization = await applyRuleEngine(getPrisma(), { userId });
-
-  // The ledger is resolved after categorization, not before: which lines get a
-  // payee depends on the category (an ATM withdrawal has no counterparty), so
-  // the order is load-bearing rather than incidental.
-  const payees = await resolvePayees(getPrisma(), { userId });
+  const { categorization, ai, payees } = await categorizeForUser(userId);
 
   res.status(201).json({
     accountId,
@@ -268,6 +298,7 @@ export const commitTransactions: RequestHandler = async (req, res) => {
     imported: toImport.length,
     skipped: skipped.length,
     categorization,
+    ai,
     payees,
   });
 };
@@ -591,16 +622,15 @@ export const clearSplit: RequestHandler = async (req, res) => {
   res.json({ removed: count });
 };
 
-/** POST /api/transactions/categorize — re-runs the deterministic pass. */
+/** POST /api/transactions/categorize — re-runs the rules, then the model for what they leave. */
 export const categorizeTransactions: RequestHandler = async (req, res) => {
   const userId = currentUserId(req);
   const { accountId } = z.object({ accountId: z.string().min(1) }).parse(req.body);
   await requireAccount(userId, accountId);
 
-  const categorization = await applyRuleEngine(getPrisma(), { userId });
-  const payees = await resolvePayees(getPrisma(), { userId });
+  const { categorization, ai, payees } = await categorizeForUser(userId);
 
-  res.json({ ...categorization, payees });
+  res.json({ ...categorization, ai, payees });
 };
 
 const reviewQueueQuerySchema = z.object({

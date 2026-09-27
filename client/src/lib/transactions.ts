@@ -84,12 +84,30 @@ export type UploadResponse = UploadPreview | NeedsMapping;
 
 export type Resolution = 'keep' | 'skip';
 
+/** What the AI fallback did after an import. */
+export type AiPassResult =
+  | {
+      status: 'done';
+      /** Merchants given a category by the model (or its cache). */
+      categorized: number;
+      lowConfidence: number;
+      /** Payments to a person, which are never sent to the model. */
+      skippedPeople: number;
+      /** Still UNCATEGORIZED across the user's transactions. */
+      stillUnresolved: number;
+    }
+  | { status: 'off' }
+  | { status: 'unavailable'; reason: string };
+
 export interface CommitResult {
   accountId: string;
   /** The import this commit created; null when every row was skipped. */
   importId?: string | null;
   imported: number;
   skipped: number;
+  /** The rule engine's pass, over all of the user's transactions. */
+  categorization?: { uncategorized: number };
+  ai?: AiPassResult;
 }
 
 export async function fetchAccounts(): Promise<Account[]> {

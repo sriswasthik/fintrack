@@ -115,7 +115,9 @@ Open `server/.env` and set two things:
 
 `ANTHROPIC_API_KEY` is optional. Without it everything works except the LLM
 categorization fallback and the written monthly summary, which degrades to a
-generated figures-only recap rather than failing.
+generated figures-only recap rather than failing. With it, every import runs the
+fallback over the merchants the rules could not settle; set
+`AI_CATEGORIZATION=off` to keep merchant names on the server instead.
 
 ### 3. Set up the database
 
@@ -212,7 +214,7 @@ Set these in the platform's environment:
 | `JWT_REFRESH_SECRET` | 32+ random bytes                                                 |
 | `CORS_ORIGIN`        | The deployed client's origin, e.g. `https://fintrack.vercel.app` |
 | `NODE_ENV`           | `production`                                                     |
-| `DEMO_MODE`          | `on` to offer the public demo                                    |
+| `DEMO_MODE`          | `on` only on a demo-only instance; `render.yaml` sets `off`      |
 
 `NODE_ENV=production` is what makes the refresh cookie `Secure; SameSite=None`,
 which is required for it to travel between two different HTTPS origins — and is
@@ -237,7 +239,7 @@ expect to set one variable and redeploy once.
 ### After deploying
 
 ```bash
-curl https://<api-host>/api/health            # {"status":"ok","demo":true}
+curl https://<api-host>/api/health            # {"status":"ok","demo":false}
 ```
 
 Then open the client URL: the landing page reports whether it can reach the API,
@@ -248,8 +250,9 @@ broken build.
 
 Copy the `.env.example` files and fill them in — never commit a real `.env`.
 
-- `server/.env` — `DATABASE_URL`, `ANTHROPIC_API_KEY`, `JWT_ACCESS_SECRET`,
-  `JWT_REFRESH_SECRET`, `CORS_ORIGIN`, `PORT`, `DEMO_MODE`, `DEMO_USER_EMAIL`
+- `server/.env` — `DATABASE_URL`, `ANTHROPIC_API_KEY`, `AI_CATEGORIZATION`,
+  `JWT_ACCESS_SECRET`, `JWT_REFRESH_SECRET`, `CORS_ORIGIN`, `PORT`, `DEMO_MODE`,
+  `DEMO_USER_EMAIL`
 - `client/.env` — `VITE_API_BASE_URL`
 
 Only `VITE_`-prefixed variables reach the browser bundle. Secrets belong in

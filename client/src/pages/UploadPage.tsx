@@ -1,5 +1,6 @@
 import { useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { Link } from 'react-router-dom';
 
 import { AddAccountForm } from '@/components/AddAccountForm';
 import { Badge } from '@/components/ui/badge';
@@ -638,13 +639,59 @@ export function UploadPage() {
             <CardTitle>Import complete</CardTitle>
             <CardDescription>
               Imported {result.imported} transaction(s)
-              {result.skipped > 0 ? `, skipped ${result.skipped}` : ''}. They are stored
-              uncategorized — categorization arrives in a later phase.
+              {result.skipped > 0 ? `, skipped ${result.skipped}` : ''}.
             </CardDescription>
           </CardHeader>
+          <CardContent>
+            <CategorizationOutcome result={result} />
+          </CardContent>
         </Card>
       )}
     </main>
+  );
+}
+
+/**
+ * What categorization made of the import: the rules ran, then — when the
+ * server has it — the AI fallback for whatever they left.
+ *
+ * Counts are across all of the user's transactions, not just this import:
+ * that is what the Review page will show.
+ */
+function CategorizationOutcome({ result }: { result: CommitResult }) {
+  const { ai, categorization } = result;
+  const left = ai?.status === 'done' ? ai.stillUnresolved : (categorization?.uncategorized ?? 0);
+
+  const parts: string[] = [];
+  if (ai?.status === 'done' && ai.categorized > 0) {
+    parts.push(
+      `AI categorized ${ai.categorized} transaction(s) the rules could not` +
+        (ai.lowConfidence > 0 ? `, ${ai.lowConfidence} of them tentatively.` : '.'),
+    );
+  }
+  if (ai?.status === 'unavailable') parts.push(ai.reason);
+  if (ai?.status === 'done' && ai.skippedPeople > 0) {
+    parts.push(
+      `${ai.skippedPeople} payment(s) to people were not sent to the AI — only you know what those were for.`,
+    );
+  }
+
+  return (
+    <div className="space-y-1 text-sm">
+      {parts.map((part) => (
+        <p key={part}>{part}</p>
+      ))}
+      {left > 0 ? (
+        <p>
+          {left} transaction(s) still need a category.{' '}
+          <Link to="/review" className="underline underline-offset-4">
+            Review them
+          </Link>
+        </p>
+      ) : (
+        <p>Everything is categorized.</p>
+      )}
+    </div>
   );
 }
 

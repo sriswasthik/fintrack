@@ -2,6 +2,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { ReactNode } from 'react';
+import { MemoryRouter } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { createAccount } from '@/lib/accounts';
@@ -98,7 +99,9 @@ const PREVIEW: UploadPreview = {
 function renderPage() {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   const wrapper = ({ children }: { children: ReactNode }) => (
-    <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+    <QueryClientProvider client={queryClient}>
+      <MemoryRouter>{children}</MemoryRouter>
+    </QueryClientProvider>
   );
   return render(<UploadPage />, { wrapper });
 }
@@ -214,6 +217,79 @@ describe('UploadPage', () => {
 
     expect(await screen.findByText('Import complete')).toBeInTheDocument();
     expect(screen.getByText(/Imported 2 transaction\(s\), skipped 1\./)).toBeInTheDocument();
+  });
+
+  it('says what the AI categorized and what is left for review', async () => {
+    commitImportMock.mockResolvedValue({
+      accountId: 'acct_1',
+      imported: 2,
+      skipped: 1,
+      categorization: { uncategorized: 5 },
+      ai: {
+        status: 'done',
+        categorized: 3,
+        lowConfidence: 1,
+        skippedPeople: 1,
+        stillUnresolved: 2,
+      },
+    });
+
+    const user = userEvent.setup();
+    renderPage();
+    await chooseAccountAndFile(user);
+    await user.click(screen.getByRole('button', { name: 'Upload' }));
+    await user.click(await screen.findByRole('button', { name: 'Confirm Import' }));
+
+    expect(
+      await screen.findByText(
+        'AI categorized 3 transaction(s) the rules could not, 1 of them tentatively.',
+      ),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(/1 payment\(s\) to people were not sent to the AI/),
+    ).toBeInTheDocument();
+    expect(screen.getByText(/2 transaction\(s\) still need a category/)).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Review them' })).toHaveAttribute('href', '/review');
+  });
+
+  it('says so when the server has no AI configured', async () => {
+    commitImportMock.mockResolvedValue({
+      accountId: 'acct_1',
+      imported: 2,
+      skipped: 0,
+      categorization: { uncategorized: 4 },
+      ai: { status: 'unavailable', reason: 'AI categorization is not configured on this server.' },
+    });
+
+    const user = userEvent.setup();
+    renderPage();
+    await chooseAccountAndFile(user);
+    await user.click(screen.getByRole('button', { name: 'Upload' }));
+    await user.click(await screen.findByRole('button', { name: 'Confirm Import' }));
+
+    expect(
+      await screen.findByText('AI categorization is not configured on this server.'),
+    ).toBeInTheDocument();
+    expect(screen.getByText(/4 transaction\(s\) still need a category/)).toBeInTheDocument();
+  });
+
+  it('reports only the rules when the AI pass is off', async () => {
+    commitImportMock.mockResolvedValue({
+      accountId: 'acct_1',
+      imported: 2,
+      skipped: 0,
+      categorization: { uncategorized: 0 },
+      ai: { status: 'off' },
+    });
+
+    const user = userEvent.setup();
+    renderPage();
+    await chooseAccountAndFile(user);
+    await user.click(screen.getByRole('button', { name: 'Upload' }));
+    await user.click(await screen.findByRole('button', { name: 'Confirm Import' }));
+
+    expect(await screen.findByText('Everything is categorized.')).toBeInTheDocument();
+    expect(screen.queryByText(/AI/)).not.toBeInTheDocument();
   });
 
   it('shows the column-mapping form when the server does not recognise the headers', async () => {

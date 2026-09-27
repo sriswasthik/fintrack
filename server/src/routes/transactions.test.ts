@@ -40,7 +40,11 @@ vi.mock('../db', () => ({
 
 // vi.mock is hoisted above these imports, so `app` already sees the mocked db.
 import { app } from '../app';
+import { setMerchantCategorizer } from '../controllers/transactions';
 import { authHeader } from '../test/auth';
+
+/** Stands in for the model, so no route test can reach the network. */
+const categorize = vi.hoisted(() => vi.fn());
 
 const ACCOUNT_ID = 'acct_checking';
 
@@ -64,6 +68,8 @@ function upload(csv: string, fields: Record<string, string> = {}) {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  categorize.mockResolvedValue([]);
+  setMerchantCategorizer({ categorize });
   db.accountFindUnique.mockResolvedValue({
     id: ACCOUNT_ID,
     name: 'Everyday Checking',
@@ -436,6 +442,35 @@ describe('POST /api/transactions/commit', () => {
     });
     expect(inserted[0].date.toISOString()).toBe('2026-03-01T00:00:00.000Z');
     expect(inserted[1].postedDate).toBeNull();
+  });
+
+  it('runs the AI pass after the rules and reports it', async () => {
+    process.env.AI_CATEGORIZATION = 'on';
+    try {
+      const response = await request(app)
+        .post('/api/transactions/commit')
+        .set(authHeader())
+        .send({ accountId: ACCOUNT_ID, rows, resolutions: {} })
+        .expect(201);
+
+      // The rule engine is mocked to leave nothing unresolved, so there is
+      // nothing for the model to be asked.
+      expect(response.body.ai).toMatchObject({ status: 'done', sentToModel: 0 });
+      expect(categorize).not.toHaveBeenCalled();
+    } finally {
+      process.env.AI_CATEGORIZATION = 'off';
+    }
+  });
+
+  it('says the AI pass is off when the operator switched it off', async () => {
+    // Off is the test default (src/test/setup.ts).
+    const response = await request(app)
+      .post('/api/transactions/commit')
+      .set(authHeader())
+      .send({ accountId: ACCOUNT_ID, rows, resolutions: {} })
+      .expect(201);
+
+    expect(response.body.ai).toEqual({ status: 'off' });
   });
 
   it('honours a skip resolution', async () => {

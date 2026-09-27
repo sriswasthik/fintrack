@@ -30,6 +30,9 @@ export const CATEGORIZATION_MODEL = 'claude-opus-5';
 /** Merchants per request. Keeps a call cheap and its output well inside max_tokens. */
 export const MERCHANT_BATCH_SIZE = 20;
 
+/** Batches in flight at once. */
+const CONCURRENT_BATCHES = 4;
+
 /**
  * Below this, an AI answer is treated as a suggestion rather than a decision:
  * it is stored, but the transaction still appears in the review queue.
@@ -215,10 +218,16 @@ export class AnthropicMerchantCategorizer implements MerchantCategorizer {
   }
 
   async categorize(merchants: string[]): Promise<CategorizationOutcome[]> {
+    // A few batches at a time: this runs inside the import request, and a
+    // first statement can carry a couple of hundred unfamiliar merchants.
+    const queue = batched(merchants, this.batchSize);
     const outcomes: CategorizationOutcome[] = [];
-    for (const batch of batched(merchants, this.batchSize)) {
-      outcomes.push(...(await this.categorizeBatch(batch)));
-    }
+    const worker = async () => {
+      for (let batch = queue.shift(); batch; batch = queue.shift()) {
+        outcomes.push(...(await this.categorizeBatch(batch)));
+      }
+    };
+    await Promise.all(Array.from({ length: Math.min(CONCURRENT_BATCHES, queue.length) }, worker));
     return outcomes;
   }
 
