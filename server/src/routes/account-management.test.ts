@@ -116,6 +116,24 @@ describe('validation before any query', () => {
       .expect(400);
   });
 
+  it('says reset is unavailable, rather than promising an email, when none can be sent', async () => {
+    const saved = { ...process.env };
+    process.env.NODE_ENV = 'production';
+    delete process.env.RESEND_API_KEY;
+    delete process.env.EMAIL_FROM;
+    try {
+      // The database mock is empty: answering without it is what makes this
+      // the same response for every address.
+      const response = await request(app)
+        .post('/api/auth/forgot-password')
+        .send({ email: 'someone@example.com' })
+        .expect(503);
+      expect(response.body.error).toMatch(/not available on this server/);
+    } finally {
+      process.env = saved;
+    }
+  });
+
   it('refuses an account update that changes nothing', async () => {
     await request(app).patch('/api/accounts/acct_1').set(authHeader()).send({}).expect(400);
   });

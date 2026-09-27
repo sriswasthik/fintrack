@@ -251,6 +251,10 @@ expect to set one variable and redeploy once.
 curl https://<api-host>/api/health            # {"status":"ok","demo":false}
 ```
 
+Check the service's startup log for `[config]` lines. Each one names a missing
+or risky setting — no mail provider (password reset unavailable), no
+`CORS_ORIGIN`, no Anthropic key, demo mode on — and says what it costs.
+
 Then open the client URL: the landing page reports whether it can reach the API,
 which is the fastest way to tell a CORS or `VITE_API_BASE_URL` mistake from a
 broken build.

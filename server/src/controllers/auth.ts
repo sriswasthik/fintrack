@@ -25,6 +25,7 @@ import {
 import { DEMO_SESSION_TTL_SECONDS, demoModeEnabled, demoUserEmail } from '../services/auth/demo';
 import { consumePasswordReset, createPasswordReset } from '../services/auth/passwordReset';
 import { sendPasswordResetEmail } from '../services/email/passwordReset';
+import { emailConfigured } from '../services/email/send';
 import { sendWelcomeEmail } from '../services/email/welcome';
 import {
   InvalidGoogleTokenError,
@@ -299,6 +300,18 @@ const RESET_ACCEPTED =
  */
 export const forgotPassword: RequestHandler = async (req, res) => {
   const { email } = z.object({ email: emailSchema }).parse(req.body);
+
+  // With no mail provider, "a link is on its way" would be a promise nothing
+  // keeps, and the person would wait for an email that never comes. Saying so
+  // is the same answer for every address, so it tells nobody which ones have
+  // an account. Outside production the link goes to the console instead (see
+  // `sendPasswordResetEmail`), so the flow can still be tried locally.
+  if (!emailConfigured() && process.env.NODE_ENV === 'production') {
+    throw new HttpError(
+      503,
+      'Password reset by email is not available on this server yet. Sign in another way, or ask whoever runs it.',
+    );
+  }
 
   const user = await getPrisma().user.findUnique({
     where: { email },
