@@ -113,7 +113,7 @@ async function chooseAccountAndFile(user: ReturnType<typeof userEvent.setup>) {
   const file = new File(['date,description,amount\n2026-03-01,X,1.00\n'], 'export.csv', {
     type: 'text/csv',
   });
-  await user.upload(screen.getByLabelText('CSV or PDF file'), file);
+  await user.upload(screen.getByLabelText('CSV, Excel or PDF file'), file);
 }
 
 beforeEach(() => {
@@ -413,7 +413,7 @@ const PDF_PREVIEW: UploadPreview = { ...PREVIEW, fileName: 'statement.pdf', rows
 async function choosePdf(user: ReturnType<typeof userEvent.setup>, file = pdf()) {
   await user.click(screen.getByLabelText('Account'));
   await user.click(await screen.findByRole('option', { name: 'Everyday Checking' }));
-  await user.upload(screen.getByLabelText('CSV or PDF file'), file);
+  await user.upload(screen.getByLabelText('CSV, Excel or PDF file'), file);
 }
 
 describe('PDF statements', () => {
@@ -493,7 +493,7 @@ describe('PDF statements', () => {
     await user.click(screen.getByLabelText('Account'));
     await user.click(await screen.findByRole('option', { name: 'Everyday Checking' }));
     await user.upload(
-      screen.getByLabelText('CSV or PDF file'),
+      screen.getByLabelText('CSV, Excel or PDF file'),
       new File(['date,description,amount'], 'export.csv', { type: 'text/csv' }),
     );
 
@@ -512,7 +512,7 @@ describe('PDF statements', () => {
     await user.type(await screen.findByLabelText('Statement password'), 'first-file-password');
 
     inspectStatementMock.mockResolvedValue({ requiresPassword: false });
-    await user.upload(screen.getByLabelText('CSV or PDF file'), pdf('another.pdf'));
+    await user.upload(screen.getByLabelText('CSV, Excel or PDF file'), pdf('another.pdf'));
 
     expect(await screen.findByText(/not password-protected/i)).toBeInTheDocument();
     expect(screen.queryByLabelText('Statement password')).not.toBeInTheDocument();
@@ -600,7 +600,7 @@ describe('statement period', () => {
     const user = userEvent.setup();
     renderPage();
 
-    const single = screen.getByLabelText('CSV or PDF file');
+    const single = screen.getByLabelText('CSV, Excel or PDF file');
     expect(single).not.toHaveAttribute('multiple');
 
     await choosePeriod(user, 'Quarterly');

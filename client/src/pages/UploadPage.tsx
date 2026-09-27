@@ -92,6 +92,7 @@ export function UploadPage() {
   const noAccounts = accounts.isSuccess && accounts.data.length === 0;
 
   const multiple = ALLOWS_MULTIPLE[period];
+  const fileLabel = multiple ? 'CSV or PDF files' : 'CSV, Excel or PDF file';
 
   /**
    * A PDF is inspected the moment it is chosen, and only then does a password
@@ -269,7 +270,8 @@ export function UploadPage() {
       <div className="space-y-1">
         <h1 className="text-2xl font-semibold tracking-tight">Import transactions</h1>
         <p className="text-muted-foreground text-sm">
-          Upload a CSV export or a PDF statement. Nothing is saved until you confirm the preview.
+          Upload a CSV or Excel export, or a PDF statement. Nothing is saved until you confirm the
+          preview.
         </p>
       </div>
 
@@ -367,15 +369,19 @@ export function UploadPage() {
 
           <div className="flex-1 space-y-2">
             <label className="text-sm font-medium" htmlFor="statement">
-              {multiple ? 'CSV or PDF files' : 'CSV or PDF file'}
+              {fileLabel}
             </label>
             <Input
               id="statement"
               ref={fileInputRef}
               type="file"
               multiple={multiple}
-              accept=".csv,text/csv,.pdf,application/pdf"
-              aria-label={multiple ? 'CSV or PDF files' : 'CSV or PDF file'}
+              accept={
+                multiple
+                  ? '.csv,text/csv,.pdf,application/pdf'
+                  : '.csv,text/csv,.xls,.xlsx,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,.pdf,application/pdf'
+              }
+              aria-label={fileLabel}
               onChange={(event) => chooseFiles([...(event.target.files ?? [])])}
             />
             {multiple && (

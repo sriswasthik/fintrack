@@ -32,6 +32,11 @@ import {
   type ColumnMapping,
 } from '../services/parsing/csv';
 import { dateRangeOf, flagDuplicates, type ExistingTransaction } from '../services/parsing/dedup';
+import {
+  isSpreadsheet,
+  spreadsheetToCsv,
+  UnreadableSpreadsheetError,
+} from '../services/parsing/spreadsheet';
 import { resolvePayees } from '../services/payees/resolve';
 import { applyRuleEngine } from '../services/rules/apply';
 import { scopeToUser } from './user-scope';
@@ -165,13 +170,24 @@ const noSuchTransaction = () => new HttpError(404, 'No such transaction');
  * Returns a preview. Writes nothing.
  */
 export const uploadTransactions: RequestHandler = async (req, res) => {
-  if (!req.file) throw new HttpError(400, 'Expected a CSV file in the "file" field');
+  if (!req.file) throw new HttpError(400, 'Expected a CSV or Excel file in the "file" field');
 
   const userId = currentUserId(req);
   const { accountId, mapping } = uploadBodySchema.parse(req.body);
   await requireAccount(userId, accountId);
 
-  const csvText = req.file.buffer.toString('utf8');
+  // A workbook is read as the CSV it holds; from here on the two are one path.
+  let csvText: string;
+  if (isSpreadsheet(req.file.buffer, req.file.originalname)) {
+    try {
+      csvText = spreadsheetToCsv(req.file.buffer);
+    } catch (error) {
+      if (error instanceof UnreadableSpreadsheetError) throw new HttpError(400, error.message);
+      throw error;
+    }
+  } else {
+    csvText = req.file.buffer.toString('utf8');
+  }
   if (!csvText.trim()) throw new HttpError(400, 'The uploaded file is empty');
 
   const { headers, sampleRows } = inspectHeaders(csvText);

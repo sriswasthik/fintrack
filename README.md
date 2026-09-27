@@ -26,7 +26,8 @@ the number of transactions.
 
 ## What it does
 
-- **Imports** a CSV from any bank: mixed date formats, either sign convention,
+- **Imports** a CSV or Excel (XLS/XLSX) export, or a PDF statement: account
+  details above the table, separate debit and credit columns, day-first dates,
   noisy merchant strings. Duplicates from a bank sync glitch are flagged for you
   to resolve, never dropped silently.
 - **Categorizes** with a rule engine over normalized merchant names, falling
@@ -49,10 +50,15 @@ have a named test in [docs/EDGE_CASES.md](./docs/EDGE_CASES.md).
 |            |                                                                                                         |
 | ---------- | ------------------------------------------------------------------------------------------------------- |
 | **Client** | React 19, Vite, TypeScript, Tailwind CSS v4, shadcn/ui, React Router 6, TanStack Query, axios, Recharts |
-| **Server** | Node.js 20+, Express 5, TypeScript, Prisma 7, PostgreSQL, Zod                                           |
+| **Server** | Node.js 20+, Express 5, TypeScript, Prisma 7, PostgreSQL, Zod, SheetJS (Excel import)¹                  |
 | **Auth**   | JWT access token held in memory + rotating httpOnly refresh cookie, bcrypt, `express-rate-limit`        |
 | **AI**     | Anthropic SDK (`claude-opus-5`), for merchant categorization fallback and monthly summaries             |
 | **Tests**  | Vitest + Supertest (server), Vitest + Testing Library (client)                                          |
+
+<sub>¹ SheetJS is installed from `cdn.sheetjs.com`, not npm: the `xlsx` package on
+npm stopped at 0.18.5, which has published security advisories. The lockfile
+pins the tarball's checksum, so `npm ci` still verifies exactly what it installs.
+To upgrade, install the newer tarball URL from that site.</sub>
 
 ## Architecture
 

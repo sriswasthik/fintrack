@@ -43,6 +43,7 @@
     "papaparse": "^5.7.0",
     "pdfjs-dist": "^6.3.289",
     "resend": "^6.28.1",
+    "xlsx": "https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz",
     "zod": "^4.5.4"
   },
   "devDependencies": {

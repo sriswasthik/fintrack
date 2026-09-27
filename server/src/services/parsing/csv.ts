@@ -196,24 +196,32 @@ function looksLikeHeader(cells: string[]): boolean {
 const HEADER_SEARCH_LINES = 40;
 
 /**
- * The file from its header line onwards.
- *
- * Indian bank exports put the account holder, the account number and the
- * statement period above the table, so taking line one as the header yields a
- * mapping screen full of someone's address. The first line that names a date
- * column and a money column is the header; when no line does, the file is
- * returned as it came and line one is the header, as before.
+ * Which line names the transaction table's columns: the first that names a
+ * date column and a money column. -1 when none of the first lines does.
  */
-export function fromHeaderLine(csvText: string): string {
-  const text = csvText.replace(/^\uFEFF/, '');
-  const lines = text.split(/\r?\n/);
+export function headerLineIndex(csvText: string): number {
+  const lines = csvText.replace(/^\uFEFF/, '').split(/\r?\n/);
   const limit = Math.min(lines.length, HEADER_SEARCH_LINES);
   for (let i = 0; i < limit; i++) {
     if (!lines[i].trim()) continue;
     const cells = (Papa.parse<string[]>(lines[i]).data[0] ?? []).map(String);
-    if (looksLikeHeader(cells)) return i === 0 ? text : lines.slice(i).join('\n');
+    if (looksLikeHeader(cells)) return i;
   }
-  return text;
+  return -1;
+}
+
+/**
+ * The file from its header line onwards.
+ *
+ * Indian bank exports put the account holder, the account number and the
+ * statement period above the table, so taking line one as the header yields a
+ * mapping screen full of someone's address. When no line looks like a header,
+ * the file is returned as it came and line one is the header, as before.
+ */
+export function fromHeaderLine(csvText: string): string {
+  const text = csvText.replace(/^\uFEFF/, '');
+  const index = headerLineIndex(text);
+  return index > 0 ? text.split(/\r?\n/).slice(index).join('\n') : text;
 }
 
 /** Reads just the header line and a few sample rows, for the column-mapping UI. */

@@ -264,6 +264,54 @@ describe('POST /api/transactions/upload', () => {
     ]);
   });
 
+  it('reads an Excel statement through the same path as a CSV', async () => {
+    const XLSX = await import('xlsx');
+    const date = (iso: string) => ({
+      t: 'n',
+      v: Date.parse(`${iso}T00:00:00Z`) / 86_400_000 + 25569,
+      z: 'm/d/yy',
+    });
+    const book = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(
+      book,
+      XLSX.utils.aoa_to_sheet([
+        ['Account No : XXXXXXXX1234'],
+        ['Txn Date', 'Description', 'Debit', 'Credit', 'Balance'],
+        [date('2026-05-03'), 'UPI/ZOMATO', 325, null, 10675],
+        [date('2026-05-04'), 'NEFT SALARY', null, 50000, 60675],
+      ]),
+      'Statement',
+    );
+    const xlsx = XLSX.write(book, { type: 'buffer', bookType: 'xlsx' }) as Buffer;
+
+    const response = await request(app)
+      .post('/api/transactions/upload')
+      .set(authHeader())
+      .field('accountId', ACCOUNT_ID)
+      .attach('file', xlsx, 'statement.xlsx')
+      .expect(200);
+
+    expect(response.body.status).toBe('preview');
+    expect(response.body.preset).toBe('debit-credit');
+    expect(
+      response.body.rows.map((r: { date: string; amount: number }) => [r.date, r.amount]),
+    ).toEqual([
+      ['2026-05-03', 325],
+      ['2026-05-04', -50000],
+    ]);
+  });
+
+  it('says plainly when an Excel file cannot be read', async () => {
+    const response = await request(app)
+      .post('/api/transactions/upload')
+      .set(authHeader())
+      .field('accountId', ACCOUNT_ID)
+      .attach('file', Buffer.concat([Buffer.from('PK\x03\x04'), Buffer.alloc(64, 7)]), 'bad.xlsx')
+      .expect(400);
+
+    expect(response.body.error).toMatch(/could not be read as a spreadsheet/);
+  });
+
   it('re-reads month-first when the mapping says so', async () => {
     const csv = ['Date,Description,Amount', '03/05/2026,X CORP,1.00'].join('\n');
 
