@@ -85,7 +85,7 @@ export function UploadPage() {
   const noAccounts = accounts.isSuccess && accounts.data.length === 0;
 
   const multiple = ALLOWS_MULTIPLE[period];
-  const fileLabel = multiple ? 'CSV or PDF files' : 'CSV, Excel or PDF file';
+  const fileLabel = multiple ? 'CSV, Excel or PDF files' : 'CSV, Excel or PDF file';
 
   /**
    * A PDF is inspected the moment it is chosen, and only then does a password
@@ -369,11 +369,7 @@ export function UploadPage() {
               ref={fileInputRef}
               type="file"
               multiple={multiple}
-              accept={
-                multiple
-                  ? '.csv,text/csv,.pdf,application/pdf'
-                  : '.csv,text/csv,.xls,.xlsx,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,.pdf,application/pdf'
-              }
+              accept=".csv,text/csv,.xls,.xlsx,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,.pdf,application/pdf"
               aria-label={fileLabel}
               onChange={(event) => chooseFiles([...(event.target.files ?? [])])}
             />
@@ -501,7 +497,12 @@ export function UploadPage() {
                     </TableCell>
                     <TableCell>
                       {f.status === 'parsed' ? (
-                        <Badge variant="secondary">Parsed OK</Badge>
+                        <div className="space-y-1">
+                          <Badge variant="secondary">Parsed OK</Badge>
+                          {f.message && (
+                            <p className="text-muted-foreground text-xs">{f.message}</p>
+                          )}
+                        </div>
                       ) : (
                         <div className="space-y-1">
                           <Badge variant="destructive">

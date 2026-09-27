@@ -72,6 +72,14 @@ function normalizeCells(sheet: XLSX.WorkSheet): void {
 }
 
 /**
+ * Any tabular upload as CSV text: a workbook converted, CSV text as it came.
+ * Throws `UnreadableSpreadsheetError` for a workbook that cannot be read.
+ */
+export function tableToCsv(buffer: Buffer, fileName = ''): string {
+  return isSpreadsheet(buffer, fileName) ? spreadsheetToCsv(buffer) : buffer.toString('utf8');
+}
+
+/**
  * The workbook as CSV text: the sheet holding the transaction table, or the
  * first sheet with anything in it when no sheet looks like one.
  */

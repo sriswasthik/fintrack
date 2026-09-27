@@ -72,6 +72,28 @@ export const MAX_PDF_BYTES = 15 * 1024 * 1024;
  */
 export const MAX_BATCH_FILES = 24;
 
+/**
+ * Several statements as one import: PDFs, CSV and Excel exports, mixed freely.
+ * The per-file ceiling is the PDF one, the larger of the two.
+ */
+export const batchUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: MAX_PDF_BYTES, files: MAX_BATCH_FILES },
+  fileFilter: (_req, file, callback) => {
+    const accepted =
+      PDF_MIME_TYPES.has(file.mimetype) ||
+      ACCEPTED_MIME_TYPES.has(file.mimetype) ||
+      /\.(pdf|csv|xlsx?)$/i.test(file.originalname ?? '');
+    if (!accepted) {
+      callback(
+        new UnsupportedFileTypeError('Only .pdf, .csv, .xls and .xlsx files can be uploaded here'),
+      );
+      return;
+    }
+    callback(null, true);
+  },
+});
+
 export const pdfUpload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: MAX_PDF_BYTES, files: MAX_BATCH_FILES },

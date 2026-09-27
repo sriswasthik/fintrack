@@ -514,6 +514,98 @@ describe('POST /api/statements/parse-batch', () => {
   });
 });
 
+describe('POST /api/statements/parse-batch, with CSV and Excel exports', () => {
+  // Every value is invented. The same NEFT credit appears in both exports, as it
+  // does when two downloads overlap by a day.
+  const csv = [
+    'Account No : XXXXXXXX1234',
+    'Txn Date,Description,Debit,Credit,Balance',
+    '14/03/2026,UPI/ZOMATO,325.00,,10675.00',
+    '15/03/2026,NEFT CR-CITI0100000-NORTHWIND LABS-A SAMPLE PERSON,,50000.00,60675.00',
+  ].join('\n');
+
+  async function workbook(): Promise<Buffer> {
+    const XLSX = await import('xlsx');
+    const book = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(
+      book,
+      XLSX.utils.aoa_to_sheet([
+        ['Txn Date', 'Description', 'Debit', 'Credit', 'Balance'],
+        ['15/03/2026', 'NEFT CR-CITI0100000-NORTHWIND LABS-A SAMPLE PERSON', '', '50000', '60675'],
+        ['16/03/2026', 'UPI/SWIGGY', '450', '', '60225'],
+      ]),
+      'Statement',
+    );
+    return XLSX.write(book, { type: 'buffer', bookType: 'xlsx' }) as Buffer;
+  }
+
+  const upload = (files: [Buffer, string][]) => {
+    let req = request(app)
+      .post('/api/statements/parse-batch')
+      .set(authHeader())
+      .field('accountId', ACCOUNT_ID);
+    for (const [buffer, name] of files) req = req.attach('files', buffer, name);
+    return req;
+  };
+
+  it('reads PDF, CSV and Excel files together as one import', async () => {
+    const response = await upload([
+      [fixture(quarter[0]), quarter[0]],
+      [Buffer.from(csv), 'march.csv'],
+      [await workbook(), 'march.xlsx'],
+    ]).expect(200);
+
+    expect(
+      response.body.files.map((f: { status: string; via: string }) => [f.status, f.via]),
+    ).toEqual([
+      ['parsed', 'adapter'],
+      ['parsed', 'table'],
+      ['parsed', 'table'],
+    ]);
+    expect(response.body.files[1].sourceLabel).toBe('CSV — Separate debit and credit columns');
+    expect(response.body.files[2].sourceLabel).toBe('Excel — Separate debit and credit columns');
+    expect(response.body.filesParsed).toBe(3);
+  });
+
+  it('catches the same transaction in two exports of different kinds', async () => {
+    const response = await upload([
+      [Buffer.from(csv), 'march.csv'],
+      [await workbook(), 'march.xlsx'],
+    ]).expect(200);
+
+    const repeated = response.body.rows.filter(
+      (r: { duplicate: { reason: string } | null }) => r.duplicate,
+    );
+    expect(repeated).toHaveLength(1);
+    expect(repeated[0]).toMatchObject({
+      fileName: 'march.xlsx',
+      normalizedMerchant: 'NORTHWIND LABS',
+      duplicate: { reason: 'Same amount and merchant as a row in march.csv' },
+    });
+    expect(response.body.crossFileDuplicateCount).toBe(1);
+  });
+
+  it('fails only the file whose columns it cannot recognise', async () => {
+    const response = await upload([
+      [Buffer.from(csv), 'march.csv'],
+      [Buffer.from('Posted,Merchant Name,Debit\n2026-03-01,ACME,10.00\n'), 'odd.csv'],
+    ]).expect(200);
+
+    expect(response.body.files[0].status).toBe('parsed');
+    expect(response.body.files[1]).toMatchObject({ status: 'failed', reason: 'needs-mapping' });
+    expect(response.body.files[1].message).toMatch(/Import this file on its own/);
+    expect(response.body.totalRows).toBe(2);
+  });
+
+  it('says when a file’s day/month order was assumed', async () => {
+    const ambiguous = ['Date,Description,Amount', '03/05/2026,X CORP,1.00'].join('\n');
+    const response = await upload([[Buffer.from(ambiguous), 'may.csv']]).expect(200);
+
+    expect(response.body.files[0].message).toMatch(/read day first/);
+    expect(response.body.rows[0].date).toBe('2026-05-03');
+  });
+});
+
 describe('single-file parse, now that adapters exist', () => {
   it.each([
     ['statement_sbi.pdf', 'sbi', 'adapter'],

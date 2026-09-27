@@ -604,14 +604,14 @@ describe('statement period', () => {
     expect(single).not.toHaveAttribute('multiple');
 
     await choosePeriod(user, 'Quarterly');
-    expect(await screen.findByLabelText('CSV or PDF files')).toHaveAttribute('multiple');
+    expect(await screen.findByLabelText('CSV, Excel or PDF files')).toHaveAttribute('multiple');
   });
 
   it('offers a custom range too', async () => {
     const user = userEvent.setup();
     renderPage();
     await choosePeriod(user, 'Custom range');
-    expect(await screen.findByLabelText('CSV or PDF files')).toHaveAttribute('multiple');
+    expect(await screen.findByLabelText('CSV, Excel or PDF files')).toHaveAttribute('multiple');
   });
 
   it('sends every chosen file as one batch', async () => {
@@ -620,7 +620,7 @@ describe('statement period', () => {
     await chooseAccount(user);
     await choosePeriod(user, 'Quarterly');
 
-    await user.upload(screen.getByLabelText('CSV or PDF files'), [
+    await user.upload(screen.getByLabelText('CSV, Excel or PDF files'), [
       pdfFile('april.pdf'),
       pdfFile('may.pdf'),
       pdfFile('june.pdf'),
@@ -633,6 +633,40 @@ describe('statement period', () => {
     expect(parseStatementMock).not.toHaveBeenCalled();
   });
 
+  it('takes CSV and Excel exports in a batch, and shows what it assumed about one', async () => {
+    parseStatementBatchMock.mockResolvedValue({
+      ...BATCH,
+      files: [
+        BATCH.files[0],
+        {
+          ...BATCH.files[1],
+          fileName: 'may.csv',
+          source: 'unknown',
+          sourceLabel: 'CSV — Separate debit and credit columns',
+          via: 'table',
+          message: 'Dates were read day first (03/05 is 3 May); nothing in the file proved it.',
+        },
+      ],
+    });
+    const user = userEvent.setup();
+    renderPage();
+    await chooseAccount(user);
+    await choosePeriod(user, 'Quarterly');
+
+    await user.upload(screen.getByLabelText('CSV, Excel or PDF files'), [
+      pdfFile('april.pdf'),
+      new File(['Date,Description,Amount\n'], 'may.csv', { type: 'text/csv' }),
+    ]);
+    await user.click(screen.getByRole('button', { name: 'Upload' }));
+
+    expect(await screen.findByText('CSV — Separate debit and credit columns')).toBeInTheDocument();
+    expect(screen.getByText(/Dates were read day first/)).toBeInTheDocument();
+    expect(parseStatementBatchMock.mock.calls[0][0].files.map((f: File) => f.name)).toEqual([
+      'april.pdf',
+      'may.csv',
+    ]);
+  });
+
   it('does not inspect each file up front when several are chosen', async () => {
     // With one file the answer decides whether to show a password box before
     // uploading. With several, the batch preview answers it per file instead.
@@ -641,7 +675,7 @@ describe('statement period', () => {
     await chooseAccount(user);
     await choosePeriod(user, 'Quarterly');
 
-    await user.upload(screen.getByLabelText('CSV or PDF files'), [
+    await user.upload(screen.getByLabelText('CSV, Excel or PDF files'), [
       pdfFile('a.pdf'),
       pdfFile('b.pdf'),
     ]);
@@ -661,7 +695,7 @@ describe('the combined batch preview', () => {
     renderPage();
     await chooseAccount(user);
     await choosePeriod(user, 'Quarterly');
-    await user.upload(screen.getByLabelText('CSV or PDF files'), [
+    await user.upload(screen.getByLabelText('CSV, Excel or PDF files'), [
       pdfFile('april.pdf'),
       pdfFile('may.pdf'),
     ]);

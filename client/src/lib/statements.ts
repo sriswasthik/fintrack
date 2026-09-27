@@ -90,10 +90,12 @@ export interface BatchFile {
   status: BatchFileStatus;
   source: string | null;
   sourceLabel: string | null;
-  via: 'adapter' | 'layout' | 'model' | null;
+  /** 'table' for a CSV or Excel export. */
+  via: 'adapter' | 'layout' | 'model' | 'table' | null;
   rowCount: number;
   skippedRows: { index: number; reason: string }[];
   reason?: string;
+  /** Why a file failed — or, for one that parsed, what it assumed. */
   message?: string;
 }
 

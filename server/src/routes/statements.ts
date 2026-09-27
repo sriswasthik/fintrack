@@ -3,7 +3,7 @@ import { Router } from 'express';
 import { inspectStatement, parseStatement, parseStatementBatch } from '../controllers/statements';
 import { asyncHandler } from '../middleware/errorHandler';
 import { uploadLimiter } from '../middleware/rateLimit';
-import { MAX_BATCH_FILES, pdfUpload } from '../middleware/upload';
+import { batchUpload, MAX_BATCH_FILES, pdfUpload } from '../middleware/upload';
 
 export const statementsRouter = Router();
 
@@ -28,12 +28,13 @@ statementsRouter.post(
 );
 
 /**
- * Several statements as one import — a quarter, or any range the user picked.
- * Duplicate detection runs across the whole batch, which is the point of it.
+ * Several statements as one import — a quarter, or any range the user picked —
+ * as PDF, CSV or Excel, mixed freely. Duplicate detection runs across the whole
+ * batch, which is the point of it.
  */
 statementsRouter.post(
   '/statements/parse-batch',
   uploadLimiter,
-  pdfUpload.array('files', MAX_BATCH_FILES),
+  batchUpload.array('files', MAX_BATCH_FILES),
   asyncHandler(parseStatementBatch),
 );
