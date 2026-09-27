@@ -23,6 +23,10 @@ import {
   type StatementReader,
 } from '../services/ai/statement';
 
+// The first test in this file to open a PDF pays for loading pdf.js: about a
+// second on its own, and past Vitest's 5s default when every suite runs at once.
+vi.setConfig({ testTimeout: 20_000 });
+
 const ACCOUNT_ID = 'acct_checking';
 const FIXTURES = join(__dirname, '..', '..', '..', 'test-data');
 const PASSWORD = 'fintrack-test-password';
